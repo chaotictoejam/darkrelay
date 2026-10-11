@@ -1,0 +1,8 @@
+node_modules/
+dist/
+cdk.out/
+coverage/
+*.tsbuildinfo
+.env
+# Your deployment config. Copy darkrelay.config.example.json to start.
+darkrelay.config.json

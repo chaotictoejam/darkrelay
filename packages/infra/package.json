@@ -1,0 +1,19 @@
+{
+  "name": "@darkrelay/infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "synth": "cdk synth --quiet"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.273.0",
+    "constructs": "10.8.1",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1145.0",
+    "esbuild": "0.25.12"
+  }
+}

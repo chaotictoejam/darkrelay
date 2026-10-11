@@ -1,0 +1,14 @@
+{
+  "slug": "my-show",
+  "status": "draft",
+  "title": "My Show",
+  "description": "<p>What the show is about.</p>",
+  "link": "https://example.com",
+  "language": "en",
+  "author": "Your Name",
+  "owner": { "name": "Your Name", "email": "you@example.com" },
+  "categories": [{ "text": "Technology" }],
+  "explicit": false,
+  "type": "episodic",
+  "podcastIndexNotify": false
+}

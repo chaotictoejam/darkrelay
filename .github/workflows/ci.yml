@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Validate fixture feeds
+        run: |
+          for f in packages/core/test/fixtures/*.xml; do pnpm -s darkrelay validate "$f"; done
+      - name: Validate a feed built from an imported fixture
+        run: |
+          pnpm -s darkrelay import https://anchor.fm/s/abc123/podcast/rss --show example \
+            --file packages/core/test/fixtures/anchor-style.xml --dry-run --out /tmp/import
+          pnpm -s darkrelay validate /tmp/import/feed.preview.xml
+      - name: CDK synth
+        env:
+          CDK_DEFAULT_ACCOUNT: '123456789012'
+        run: |
+          jq '.domain.hostedZoneId = "Z0000000000000"' darkrelay.config.example.json > /tmp/c.json
+          DARKRELAY_CONFIG=/tmp/c.json pnpm synth

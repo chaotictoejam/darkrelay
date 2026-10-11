@@ -1,0 +1,10 @@
+{
+  "stackPrefix": "DarkRelay",
+  "domain": {
+    "dns": "route53",
+    "name": "media.example.com",
+    "hostedZoneName": "example.com"
+  },
+  "logs": { "retentionDays": 90 },
+  "priceClass": "100"
+}
