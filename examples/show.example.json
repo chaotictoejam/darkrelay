@@ -21,5 +21,11 @@
   "video": {
     "hls": false,
     "ladder": [1080, 720, 480]
+  },
+  "youtube": {
+    "connection": "my-show",
+    "upload": true,
+    "privacy": "public",
+    "categoryId": "22"
   }
 }

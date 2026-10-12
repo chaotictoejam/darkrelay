@@ -86,3 +86,27 @@ const DEVICES: Record<string, string> = {
 export function deviceName(category: string): string {
   return DEVICES[category] ?? category.replace(/_/g, ' ');
 }
+
+/** 2m 24s / 1h 30m / 12h */
+export function duration(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h >= 10) return `${h}h`;
+  if (h) return m ? `${h}h ${m}m` : `${h}h`;
+  const rest = s % 60;
+  return rest ? `${m}m ${rest}s` : `${m}m`;
+}
+
+const SOURCES: Record<string, string> = {
+  cloudfront: 'Podcast apps (downloads)',
+  prefix: 'Podcast apps (via prefix)',
+  youtube: 'YouTube (views)',
+  'apple-csv': 'Apple Podcasts',
+  'spotify-csv': 'Spotify',
+};
+
+export function sourceName(source: string): string {
+  return SOURCES[source] ?? source;
+}

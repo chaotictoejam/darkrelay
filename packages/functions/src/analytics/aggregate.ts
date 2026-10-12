@@ -9,7 +9,10 @@ import {
   type FileFacts,
   type MetricItem,
   type RequestGroup,
+  windowTotals,
 } from '@darkrelay/core';
+
+export { windowTotals };
 
 export interface AggregateDeps {
   /** Rows from dailyQuery for the date. */
@@ -42,27 +45,6 @@ export function toGroups(rows: Record<string, string>[]): RequestGroup[] {
     requests: Number(r['requests'] ?? 0),
     bytes: Number(r['bytes'] ?? 0),
   }));
-}
-
-/** Downloads in the first `days` days after release (release day is day 0). */
-export function windowTotals(pubDate: string, series: MetricItem[]) {
-  const start = Date.parse(pubDate.slice(0, 10) + 'T00:00:00Z');
-  const totals = {
-    downloads7: 0,
-    downloads30: 0,
-    downloads90: 0,
-    downloadsTotal: 0,
-    serverTotal: 0,
-  };
-  for (const item of series) {
-    const age = Math.floor((Date.parse(item.date + 'T00:00:00Z') - start) / 86_400_000);
-    totals.downloadsTotal += item.downloads;
-    totals.serverTotal += item.serverDownloads;
-    if (age < 7) totals.downloads7 += item.downloads;
-    if (age < 30) totals.downloads30 += item.downloads;
-    if (age < 90) totals.downloads90 += item.downloads;
-  }
-  return totals;
 }
 
 /**
@@ -128,7 +110,9 @@ export async function aggregateDay(deps: AggregateDeps, date: string) {
   for (const c of episodes.values()) {
     const m = manifests.get(`${c.show}/${c.episodeId}`);
     if (!m) continue;
-    const series = await deps.episodeSeries(c.show, c.episodeId);
+    const series = (await deps.episodeSeries(c.show, c.episodeId)).filter((i) =>
+      i.sk.startsWith('D#'),
+    );
     summaries.push({
       pk: metricKeys.showEpisodes(c.show),
       sk: metricKeys.episodeMeta(c.episodeId),

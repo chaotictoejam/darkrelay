@@ -17,6 +17,7 @@ import { ACCESS_LOG_FIELDS, ACCESS_LOG_PREFIX, parquetColumn } from '@darkrelay/
 import type { Construct } from 'constructs';
 import type { DeploymentConfig } from '../config';
 import { nodeFunction } from '../lambda';
+import { youtubeAnalytics } from '../youtube';
 
 export interface AnalyticsStackProps extends StackProps {
   config: DeploymentConfig;
@@ -166,6 +167,9 @@ export class AnalyticsStack extends Stack {
       targets: [new eventTargets.LambdaFunction(this.aggregator, { retryAttempts: 2 })],
     });
 
+    const yt = youtubeAnalytics(this, config, mediaBucket, this.table);
+
+    new CfnOutput(this, 'YouTubeAnalyticsFunctionName', { value: yt.functionName });
     new CfnOutput(this, 'MetricsTableName', { value: this.table.tableName });
     new CfnOutput(this, 'AggregatorFunctionName', { value: this.aggregator.functionName });
     new CfnOutput(this, 'AthenaWorkGroup', { value: workgroupName });

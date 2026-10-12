@@ -8,8 +8,13 @@ export const SOURCES = ['cloudfront', 'prefix', 'youtube', 'apple-csv', 'spotify
 export type MetricSource = (typeof SOURCES)[number];
 
 export interface DailyCounts {
-  /** Downloads that count as listens (IAB-style: deduped, over one minute of audio, no bots). */
+  /**
+   * Plays: downloads for RSS sources (IAB-style: deduped, over one minute of
+   * audio, no bots), views for YouTube, plays for platform exports.
+   */
   downloads: number;
+  /** Time listened or watched, in seconds, where the source knows it (YouTube, Spotify, Apple). */
+  watchSeconds?: number;
   /** Downloads by self-hosted servers (audiobookshelf etc.): downloads, not listens. */
   serverDownloads: number;
   apps: Record<string, number>;
@@ -55,6 +60,8 @@ export const metricKeys = {
   showsPk: 'SHOWS',
   showMeta: (show: string) => `S#${show}`,
   runPk: (source: MetricSource) => `RUN#${source}`,
+  /** Audience retention curve for an episode from one source (phase 5 charts it). */
+  retention: (source: MetricSource) => `RET#${source}`,
 };
 
 export function emptyCounts(): DailyCounts {
@@ -64,8 +71,35 @@ export function emptyCounts(): DailyCounts {
 export function addCounts(into: DailyCounts, from: DailyCounts): DailyCounts {
   into.downloads += from.downloads;
   into.serverDownloads += from.serverDownloads;
+  if (from.watchSeconds) into.watchSeconds = (into.watchSeconds ?? 0) + from.watchSeconds;
   for (const k of ['apps', 'countries', 'devices'] as const) {
     for (const [name, n] of Object.entries(from[k])) into[k][name] = (into[k][name] ?? 0) + n;
   }
   return into;
+}
+
+/** Plays in the first 7/30/90 days after release (release day is day 0), across all sources. */
+export function windowTotals(
+  pubDate: string,
+  series: Pick<MetricItem, 'date' | 'downloads' | 'serverDownloads' | 'watchSeconds'>[],
+) {
+  const start = Date.parse(pubDate.slice(0, 10) + 'T00:00:00Z');
+  const totals = {
+    downloads7: 0,
+    downloads30: 0,
+    downloads90: 0,
+    downloadsTotal: 0,
+    serverTotal: 0,
+    watchSecondsTotal: 0,
+  };
+  for (const item of series) {
+    const age = Math.floor((Date.parse(item.date + 'T00:00:00Z') - start) / 86_400_000);
+    totals.downloadsTotal += item.downloads;
+    totals.serverTotal += item.serverDownloads;
+    totals.watchSecondsTotal += item.watchSeconds ?? 0;
+    if (age < 7) totals.downloads7 += item.downloads;
+    if (age < 30) totals.downloads30 += item.downloads;
+    if (age < 90) totals.downloads90 += item.downloads;
+  }
+  return totals;
 }

@@ -7,7 +7,16 @@ import {
 } from './api';
 import { completeSignIn, currentToken, signIn, signOut, type RuntimeConfig } from './auth';
 import { barList, lineChart } from './charts';
-import { compact, countryName, deviceName, fillDays, shortDate, topEntries } from './format';
+import {
+  compact,
+  countryName,
+  deviceName,
+  duration,
+  fillDays,
+  sourceName,
+  shortDate,
+  topEntries,
+} from './format';
 
 const app = document.getElementById('app')!;
 const RANGES = [7, 30, 90, 365];
@@ -63,12 +72,50 @@ function scroller(child: HTMLElement) {
   return div;
 }
 
+function timeStat(seconds: number) {
+  const tile = el('div', undefined, 'stat');
+  tile.append(
+    el('span', 'Time watched or listened', 'stat-label'),
+    el('span', duration(seconds), 'stat-value'),
+  );
+  tile.append(el('span', 'Where the platform reports it (YouTube)', 'stat-note'));
+  return tile;
+}
+
 function card(title: string, body: HTMLElement, subtitle?: string) {
   const section = el('section', undefined, 'card');
   section.append(el('h2', title));
   if (subtitle) section.append(el('p', subtitle, 'muted'));
   section.append(body);
   return section;
+}
+
+/** One row per data source; new sources appear here without code changes. */
+function sourcesCard(data: SeriesResponse) {
+  const table = el('table', undefined, 'sources');
+  const head = table.createTHead().insertRow();
+  for (const h of ['Source', 'Plays', 'Time watched or listened', 'Average per play'])
+    head.append(el('th', h));
+  const body = table.createTBody();
+  for (const s of data.bySource) {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = sourceName(s.source);
+    const cells = [
+      s.plays.toLocaleString('en-US'),
+      s.watchSeconds ? duration(s.watchSeconds) : '—',
+      s.watchSeconds && s.plays ? duration(s.watchSeconds / s.plays) : '—',
+    ];
+    for (const c of cells) {
+      const td = tr.insertCell();
+      td.className = 'num';
+      td.textContent = c;
+    }
+  }
+  return card(
+    'By source',
+    data.bySource.length ? scroller(table) : el('p', 'No data in this range.', 'muted'),
+    'Download counts cannot measure listening time; only platforms that play the episode themselves can.',
+  );
 }
 
 function breakdowns(data: SeriesResponse) {
@@ -95,12 +142,12 @@ function trend(data: SeriesResponse, notBefore?: string) {
     serverDownloads: 0,
   }));
   return card(
-    'Downloads per day',
+    'Plays per day',
     lineChart(
       days.map((d) => ({ date: d.date, value: d.downloads })),
       'Downloads',
     ),
-    'Unique listeners per episode per day, over one minute of audio, bots removed.',
+    'Podcast app downloads (unique per listener per day, over one minute, no bots) plus YouTube views.',
   );
 }
 
@@ -142,13 +189,14 @@ async function showView(config: RuntimeConfig, show: string, days: number) {
   const stats = el('div', undefined, 'stats');
   stats.append(
     stat(
-      `Downloads, last ${days === 365 ? '12 months' : `${days} days`}`,
+      `Plays & downloads, last ${days === 365 ? '12 months' : `${days} days`}`,
       data.totals.downloads,
       serverNote(data.totals.serverDownloads),
       true,
     ),
     stat('Episodes', data.episodes.length),
   );
+  if (data.totals.watchSeconds) stats.append(timeStat(data.totals.watchSeconds));
 
   const table = el('table', undefined, 'episodes');
   const head = table.createTHead().insertRow();
@@ -179,6 +227,7 @@ async function showView(config: RuntimeConfig, show: string, days: number) {
     rangeControl(`#/s/${show}`, days),
     stats,
     trend(data),
+    sourcesCard(data),
     breakdowns(data),
     card(
       'Episodes',
@@ -203,6 +252,7 @@ async function episodeView(config: RuntimeConfig, show: string, id: string, days
     stat('First 30 days', e.downloads30),
     stat('First 90 days', e.downloads90),
   );
+  if (data.totals.watchSeconds) stats.append(timeStat(data.totals.watchSeconds));
   app.replaceChildren(
     back,
     el('h1', e.title),
@@ -210,6 +260,7 @@ async function episodeView(config: RuntimeConfig, show: string, id: string, days
     rangeControl(`#/s/${show}/e/${id}`, days),
     stats,
     trend(data, e.pubDate.slice(0, 10)),
+    sourcesCard(data),
     breakdowns(data),
   );
 }

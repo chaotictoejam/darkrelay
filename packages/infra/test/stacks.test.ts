@@ -229,6 +229,40 @@ describe('transcoder', () => {
   });
 });
 
+describe('youtube', () => {
+  it('runs the uploader on every episode manifest write, for up to 15 minutes', () => {
+    t.publish.hasResourceProperties('AWS::Events::Rule', {
+      EventPattern: Match.objectLike({
+        detail: Match.objectLike({ object: { key: [{ wildcard: 'catalog/*/episodes/*.json' }] } }),
+      }),
+    });
+    t.publish.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'DarkRelay-youtube-upload',
+      Timeout: 900,
+      MemorySize: 1024,
+      Environment: { Variables: Match.objectLike({ SSM_PREFIX: '/darkrelay' }) },
+    });
+  });
+
+  it('lets the uploader hand off to itself and read only its own secrets', () => {
+    const policies = JSON.stringify(t.publish.findResources('AWS::IAM::Policy'));
+    expect(policies).toContain(':function:DarkRelay-youtube-upload');
+    expect(policies).toContain(':parameter/darkrelay/*');
+    expect(policies).toContain('ssm.us-east-1.amazonaws.com');
+  });
+
+  it('pulls YouTube Analytics nightly after the CloudFront count', () => {
+    t.analytics.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'cron(40 4 * * ? *)',
+    });
+    t.analytics.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({ SSM_PREFIX: '/darkrelay', TABLE_NAME: Match.anyValue() }),
+      },
+    });
+  });
+});
+
 describe('scheduled releases', () => {
   it('lets the publisher manage only its own schedule group, and the scheduler invoke only the publisher', () => {
     t.publish.hasResourceProperties('AWS::Scheduler::ScheduleGroup', {

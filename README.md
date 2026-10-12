@@ -204,6 +204,65 @@ be running on the machine you deploy from.
 Apps that support `alternateEnclosure` (Fountain, Podverse and a few others) offer the video. Apple
 Podcasts and Spotify ignore it and play the audio.
 
+## YouTube
+
+Each show can upload its episode videos to a YouTube channel and pull views, watch time and
+retention back into the dashboard.
+
+**One-time setup**
+
+1. In [Google Cloud Console](https://console.cloud.google.com/): create a project, enable the
+   _YouTube Data API v3_ and _YouTube Analytics API_, configure the OAuth consent screen
+   (External), then **publish it ("In production")**. In "Testing", Google expires the tokens
+   every 7 days.
+2. Create an OAuth client of type **Desktop app** and download its JSON.
+3. Store it, then connect each channel (Google asks which channel if the account has several):
+
+   ```bash
+   npx darkrelay youtube client --file client_secret.json
+   npx darkrelay youtube connect her-career-unplugged
+   npx darkrelay youtube connect chaotic-commits
+   ```
+
+   Secrets are SSM Parameter Store SecureStrings under `/darkrelay/`; nothing is stored in the repo.
+
+4. Add to the show file and `npx darkrelay show put` it:
+
+   ```json
+   "youtube": { "connection": "her-career-unplugged", "categoryId": "27", "playlistId": "PL..." }
+   ```
+
+   Options: `upload` (default `true`), `privacy` (`public`, `unlisted`, `private`), `categoryId`
+   (22 People & Blogs, 27 Education, 28 Science & Technology), `playlistId`, `tags`,
+   `descriptionFooter`.
+
+**Uploads.** When an episode with a video publishes (a full video or an audiogram), it uploads to
+YouTube with the title, show notes as plain text, chapters as description timestamps, captions from
+the transcript, the episode art as thumbnail, and the playlist. A scheduled episode uploads right
+away as private with YouTube's `publishAt`, and moves if you reschedule the episode. Uploads resume
+across Lambda invocations, so long videos are fine. `npx darkrelay youtube status <show>` shows each
+episode's video, progress or error.
+
+**Two YouTube rules to know:**
+
+- **New Google Cloud projects can only upload private videos** until they pass YouTube's API
+  compliance audit (free; request it from the YouTube API Services audit form). Until then, make
+  each upload public in YouTube Studio. DarkRelay detects this and says so in `youtube status`.
+- **Quota:** the default allowance covers several uploads a day, which is plenty for a podcast.
+
+**Episodes already on YouTube:** link them, then backfill their analytics.
+
+```bash
+npx darkrelay youtube match chaotic-commits           # pairs episodes and uploads by title
+npx darkrelay youtube match chaotic-commits --apply
+npx darkrelay youtube link chaotic-commits <guid> https://youtu.be/<id>   # one at a time
+npx darkrelay analytics run --source youtube --from 2026-04-01
+```
+
+**Analytics.** Nightly at 04:40 UTC, views and watch time per episode per day (re-reading the last
+week, as YouTube finalises numbers a few days late) and each recent video's retention curve. Views
+count as plays alongside podcast downloads, and the dashboard's _By source_ table keeps them apart.
+
 ## Analytics
 
 Downloads are counted once a night from CloudFront's own logs, so nothing extra runs when someone
@@ -306,7 +365,7 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 1. **Hosting core and feed import** (done)
 2. **Download analytics and dashboard** (done)
 3. **Video: ffmpeg on Fargate Spot to HLS, plus audio extraction** (done)
-4. YouTube upload and analytics
+4. **YouTube upload and analytics** (done)
 5. HLS retention curves
 6. Prefix mode: analytics for shows that stay on another host
 7. Apple and Spotify CSV imports

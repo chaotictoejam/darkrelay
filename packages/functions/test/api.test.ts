@@ -79,6 +79,10 @@ describe('route', () => {
     ]);
     expect(body['totals']).toMatchObject({ downloads: 12, apps: { Overcast: 10, YouTube: 2 } });
     expect(body['sources']).toEqual(['cloudfront', 'youtube']);
+    expect(body['bySource']).toEqual([
+      { source: 'cloudfront', plays: 10, watchSeconds: 0 },
+      { source: 'youtube', plays: 2, watchSeconds: 0 },
+    ]);
     expect(body['episodes']).not.toContainEqual(expect.objectContaining({ pk: expect.anything() }));
   });
 

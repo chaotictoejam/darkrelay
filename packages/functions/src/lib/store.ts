@@ -35,6 +35,10 @@ export interface Store {
   put(key: string, body: string | Uint8Array, opts?: WriteOptions): Promise<void>;
   copy(from: string, to: string, opts?: WriteOptions): Promise<void>;
   list(prefix: string): Promise<ListedObject[]>;
+  /** Writes only if the key doesn't exist yet. False when it already did. */
+  createIfAbsent(key: string, body: string, opts?: WriteOptions): Promise<boolean>;
+  /** Bytes [start, end] inclusive. */
+  getRange(key: string, start: number, end: number): Promise<Uint8Array>;
   delete(keys: string[]): Promise<void>;
 }
 
@@ -91,6 +95,32 @@ export class S3Store implements Store {
         Metadata: opts.metadata,
       }),
     );
+  }
+
+  async createIfAbsent(key: string, body: string, opts: WriteOptions = {}) {
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: body,
+          IfNoneMatch: '*',
+          ContentType: opts.contentType,
+        }),
+      );
+      return true;
+    } catch (e) {
+      const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status === 412 || status === 409) return false;
+      throw e;
+    }
+  }
+
+  async getRange(key: string, start: number, end: number) {
+    const r = await this.s3.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=${start}-${end}` }),
+    );
+    return r.Body!.transformToByteArray();
   }
 
   /** CopyObject stops at 5 GB; long 1080p videos can be bigger. */

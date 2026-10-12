@@ -61,6 +61,21 @@ export const ShowConfig = z.object({
       ladder: z.array(z.number().int().min(144).max(2160)).min(1).default([1080, 720, 480]),
     })
     .default({ hls: false, ladder: [1080, 720, 480] }),
+  youtube: z
+    .object({
+      /** Name of a channel connected with `darkrelay youtube connect <name>`. */
+      connection: z.string().regex(/^[a-z0-9-]{1,40}$/),
+      /** Upload each episode's video automatically when it publishes. */
+      upload: z.boolean().default(true),
+      privacy: z.enum(['public', 'unlisted', 'private']).default('public'),
+      /** YouTube category id: 22 People & Blogs, 27 Education, 28 Science & Technology. */
+      categoryId: z.string().regex(/^\d+$/).default('22'),
+      playlistId: z.string().optional(),
+      tags: z.array(z.string()).default([]),
+      /** Appended to every description, e.g. links to the show. */
+      descriptionFooter: z.string().optional(),
+    })
+    .optional(),
   source: z
     .object({
       feedUrl: z.url(),
@@ -120,6 +135,15 @@ export const EpisodeManifest = z.object({
   keywords: z.array(z.string()).default([]),
   /** The uploaded video as-is (an audiogram or full video), kept for YouTube. Not in the feed. */
   video: AssetRef.optional(),
+  /** The episode's YouTube video, uploaded by DarkRelay or linked to an existing one. */
+  youtube: z
+    .object({
+      videoId: z.string().min(1),
+      linkedAt: z.iso.datetime(),
+      /** The release time YouTube was given, to resync if the episode is rescheduled. */
+      publishAt: z.iso.datetime().optional(),
+    })
+    .optional(),
   /** Original URLs of files copied in by migrate-media, keyed by role. */
   migratedFrom: z.record(z.string(), z.url()).optional(),
   updatedAt: z.iso.datetime(),

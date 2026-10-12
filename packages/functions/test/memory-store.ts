@@ -41,6 +41,16 @@ export class MemoryStore implements Store {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, o]) => ({ key, size: o.body.length }));
   }
+  async createIfAbsent(key: string, body: string, opts: WriteOptions = {}) {
+    if (this.objects.has(key)) return false;
+    this.seed(key, body, opts);
+    return true;
+  }
+  async getRange(key: string, start: number, end: number) {
+    const o = this.objects.get(key);
+    if (!o) throw new Error(`NoSuchKey ${key}`);
+    return o.body.slice(start, end + 1);
+  }
   async delete(keys: string[]) {
     for (const k of keys) this.objects.delete(k);
   }

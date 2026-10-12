@@ -15,12 +15,15 @@ export interface NodeFunctionProps {
   environment?: Record<string, string>;
   memorySize?: number;
   timeout?: Duration;
+  /** Fixed name, for functions that must reference their own ARN without a CloudFormation cycle. */
+  functionName?: string;
 }
 
 /** Node 22 on arm64, bundled from the functions package, logs kept a month. */
 export function nodeFunction(scope: Construct, id: string, props: NodeFunctionProps) {
   return new nodejs.NodejsFunction(scope, id, {
     entry: resolve(REPO_ROOT, 'packages/functions/src', props.entry),
+    functionName: props.functionName,
     projectRoot: REPO_ROOT,
     depsLockFilePath: resolve(REPO_ROOT, 'package-lock.json'),
     runtime: lambda.Runtime.NODEJS_22_X,

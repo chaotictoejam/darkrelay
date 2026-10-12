@@ -81,6 +81,11 @@ export const DeploymentConfig = z.object({
 export type DeploymentConfig = z.infer<typeof DeploymentConfig>;
 export type DeploymentConfigInput = z.input<typeof DeploymentConfig>;
 
+/** SSM Parameter Store path for this deployment's secrets, e.g. /darkrelay. */
+export function ssmPrefix(config: DeploymentConfig): string {
+  return `/${config.stackPrefix.toLowerCase()}`;
+}
+
 export function loadConfig(path = process.env['DARKRELAY_CONFIG']): DeploymentConfig {
   const file = resolve(path ?? resolve(import.meta.dirname, '../../../darkrelay.config.json'));
   if (!existsSync(file)) {
