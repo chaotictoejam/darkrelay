@@ -53,12 +53,12 @@ Everything deploys to **us-east-1** (CloudFront certificates and log delivery mu
 are created for you):
 
 ```json
-{ 
-  "domain": { 
-    "dns": "route53", 
-    "name": "media.example.com", 
-    "hostedZoneName": "example.com" 
-  } 
+{
+  "domain": {
+    "dns": "route53",
+    "name": "media.example.com",
+    "hostedZoneName": "example.com"
+  }
 }
 ```
 
