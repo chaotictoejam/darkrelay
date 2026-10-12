@@ -262,6 +262,19 @@ Personal scale (a few shows, a few thousand downloads a month) runs about **$1-4
 
 No NAT gateways, OpenSearch, QuickSight, Kinesis or CloudFront real-time logs, by design.
 
+### Cost alerts
+
+Traffic is the only thing that can make the bill grow fast, so `alerts` in
+`darkrelay.config.json` deploys two email alerts:
+
+- **Spike alarm** (CloudWatch, $0.10/month): more than `hourlyTransferGB` (default 20 GB) served
+  by DarkRelay's media distribution in one hour. It fires within about an hour and counts only
+  DarkRelay traffic. Confirm the subscription from the first email AWS sends, or nothing arrives.
+- **Spend budget** (AWS Budgets, free): CloudFront spend passing each of `monthlyUsd` (default
+  $25, $100, $500), plus a warning when the month is forecast to pass the first. Budgets that only
+  notify are free however many the account has; AWS only charges for budgets with actions. Billing
+  data lags by several hours, and the budget counts every CloudFront distribution in the account.
+
 ## Development
 
 ```bash

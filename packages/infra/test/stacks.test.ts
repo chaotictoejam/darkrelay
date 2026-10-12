@@ -3,6 +3,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DeploymentConfig, type DeploymentConfigInput } from '../lib/config';
 import { HostingStack } from '../lib/stacks/hosting-stack';
+import { AlertsStack } from '../lib/stacks/alerts-stack';
 import { AnalyticsStack } from '../lib/stacks/analytics-stack';
 import { DashboardStack } from '../lib/stacks/dashboard-stack';
 import { PublishStack } from '../lib/stacks/publish-stack';
@@ -316,6 +317,69 @@ describe('dashboard', () => {
     const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route'));
     expect(routes).toHaveLength(2);
     for (const r of routes) expect(r['Properties'].AuthorizationType).toBe('JWT');
+  });
+});
+
+describe('alerts', () => {
+  function alerts(input: DeploymentConfigInput['alerts']) {
+    const config = DeploymentConfig.parse({ alerts: input });
+    const app = new App();
+    const hosting = new HostingStack(app, 'H', { env, config });
+    return Template.fromStack(
+      new AlertsStack(app, 'A', {
+        env,
+        config,
+        alerts: config.alerts!,
+        distribution: hosting.distribution,
+      }),
+    );
+  }
+
+  it('alarms on bytes served per hour by this distribution only', () => {
+    const a = alerts({ email: 'me@example.com' });
+    a.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      Namespace: 'AWS/CloudFront',
+      MetricName: 'BytesDownloaded',
+      Statistic: 'Sum',
+      Period: 3600,
+      Threshold: 20 * 1024 ** 3,
+      Dimensions: Match.arrayWith([{ Name: 'Region', Value: 'Global' }]),
+    });
+    a.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'email',
+      Endpoint: 'me@example.com',
+    });
+  });
+
+  it('budgets CloudFront spend with an email at each threshold plus a forecast, and no actions', () => {
+    const a = alerts({ email: 'me@example.com', monthlyUsd: [100, 25] });
+    a.hasResourceProperties('AWS::Budgets::Budget', {
+      Budget: Match.objectLike({
+        BudgetType: 'COST',
+        TimeUnit: 'MONTHLY',
+        BudgetLimit: { Amount: 100, Unit: 'USD' },
+        CostFilters: { Service: ['Amazon CloudFront'] },
+      }),
+      NotificationsWithSubscribers: [
+        Match.objectLike({
+          Notification: Match.objectLike({ NotificationType: 'ACTUAL', Threshold: 25 }),
+        }),
+        Match.objectLike({
+          Notification: Match.objectLike({ NotificationType: 'ACTUAL', Threshold: 100 }),
+        }),
+        Match.objectLike({
+          Notification: Match.objectLike({ NotificationType: 'FORECASTED', Threshold: 25 }),
+        }),
+      ],
+    });
+    // Budget actions are what AWS charges for; this budget has none.
+    a.resourceCountIs('AWS::Budgets::BudgetsAction', 0);
+  });
+
+  it('rejects more thresholds than a budget can notify on', () => {
+    expect(() =>
+      DeploymentConfig.parse({ alerts: { email: 'me@example.com', monthlyUsd: [1, 2, 3, 4, 5] } }),
+    ).toThrow();
   });
 });
 

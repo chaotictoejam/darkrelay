@@ -61,6 +61,20 @@ export const DeploymentConfig = z.object({
       ephemeralGiB: 60,
       availabilityZones: ['us-east-1a', 'us-east-1b'],
     }),
+  /**
+   * Cost alerts. Omit to deploy none. Both alerts email `email`; the CloudWatch
+   * one needs a one-time confirmation click in the first email.
+   */
+  alerts: z
+    .object({
+      email: z.email(),
+      /** Monthly CloudFront spend (USD) that triggers an email, lowest first. */
+      // A budget allows 5 notifications: these plus one forecast warning.
+      monthlyUsd: z.array(z.number().positive()).min(1).max(4).default([25, 100, 500]),
+      /** Data served by the media distribution in one hour (GB) that triggers an email. */
+      hourlyTransferGB: z.number().positive().default(20),
+    })
+    .optional(),
   /** CloudFront edge coverage. "100" (North America and Europe) is the cheapest. */
   priceClass: z.enum(['100', '200', 'All']).default('100'),
 });

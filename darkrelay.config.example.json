@@ -5,6 +5,13 @@
     "name": "media.example.com",
     "hostedZoneName": "example.com"
   },
-  "logs": { "retentionDays": 90 },
-  "priceClass": "100"
+  "logs": {
+    "retentionDays": 90
+  },
+  "priceClass": "100",
+  "alerts": {
+    "email": "you@example.com",
+    "monthlyUsd": [25, 100, 500],
+    "hourlyTransferGB": 20
+  }
 }
