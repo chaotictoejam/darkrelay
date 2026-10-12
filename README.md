@@ -149,7 +149,9 @@ episode instead of creating a new one. Run `npx darkrelay --help` for every comm
 
 ## Moving a show from another host
 
-Migration is three steps, and only the last one is visible to listeners.
+Migration is three steps, and only the last one is visible to listeners. Coming from Spotify for
+Creators (Anchor)? Follow the step-by-step guide in
+[docs/migrating-from-spotify.md](docs/migrating-from-spotify.md).
 
 1. **Import** (available now). Copies show and episode details into a draft show. Media stays on
    the old host; nothing public changes.
