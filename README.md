@@ -206,7 +206,7 @@ Uploads over 5 GB are copied with multipart copy.
 
 `cdk deploy` builds the transcoder image (Debian's ffmpeg, about 1 GB), so the machine you deploy
 from needs Docker or Podman. For Podman, set `CDK_DOCKER=podman` (e.g.
-`CDK_DOCKER=podman npx cdk deploy --all`). Nothing else needs a container build: the Lambdas are
+`CDK_DOCKER=podman npm run deploy`). Nothing else needs a container build: the Lambdas are
 bundled with the local esbuild.
 
 Apps that support `alternateEnclosure` (Fountain, Podverse and a few others) offer the video. Apple
