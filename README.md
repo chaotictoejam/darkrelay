@@ -8,7 +8,7 @@ One upload in. An RSS feed (iTunes and Podcasting 2.0 tags) out, served from you
 with your own download logs.
 
 **Status:** phases 1 and 2 (hosting, feeds, import and migration, download analytics, dashboard).
-Video, YouTube and prefix mode come next; see [Roadmap](#roadmap).
+Video (phase 3) is built too. YouTube and prefix mode come next; see [Roadmap](#roadmap).
 
 ## How it works
 
@@ -175,6 +175,35 @@ Migration is three steps, and only the last one is visible to listeners.
    account for a few weeks. `--check-redirect` confirms the old feed answers with a 301 or an
    `<itunes:new-feed-url>` pointing at yours.
 
+## Video
+
+Each show chooses how it treats video with `video.hls` in its show file:
+
+| Show type                                                  | Upload                         | What happens                                                                                                                                                                                                              |
+| ---------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audio-first, e.g. an audiogram (`hls: false`, the default) | `ep.mp3 --video audiogram.mp4` | Publishes at once. The MP3 is the feed enclosure; the video is stored untouched for YouTube.                                                                                                                              |
+| Video show (`hls: true`)                                   | `ep.mp4`                       | ffmpeg on Fargate extracts a 128 kbps MP3 for the feed and builds HLS (1080p/720p/480p, never upscaled), listed as `<podcast:alternateEnclosure type="application/x-mpegURL">`. The episode publishes when that finishes. |
+
+A video-only upload on an audio-first show still works: the audio is extracted, no HLS is built.
+
+```bash
+pnpm darkrelay publish "HCU 04.mp4" --show her-career-unplugged --title "..." --notes notes.html
+pnpm darkrelay bundle her-career-unplugged <bundleId>   # check on it later
+```
+
+How it runs: the publisher starts one Fargate Spot task per upload (4 vCPU, 8 GB, 60 GB scratch;
+configurable under `transcoder` in `darkrelay.config.json`). Tasks run in public subnets with a
+public IP, so there's no NAT gateway; S3 traffic uses a free gateway endpoint. The task writes the
+audio and HLS, then `processed.json`, which resumes publishing. If Spot reclaims the task, the
+publisher retries once on regular Fargate; a second failure rejects the bundle with the reason.
+Uploads over 5 GB are copied with multipart copy.
+
+`cdk deploy` builds the transcoder image (Debian's ffmpeg, about 1 GB) with Docker, so Docker must
+be running on the machine you deploy from.
+
+Apps that support `alternateEnclosure` (Fountain, Podverse and a few others) offer the video. Apple
+Podcasts and Spotify ignore it and play the audio.
+
 ## Analytics
 
 Downloads are counted once a night from CloudFront's own logs, so nothing extra runs when someone
@@ -222,6 +251,11 @@ Personal scale (a few shows, a few thousand downloads a month) runs about **$1-4
 - Access logs: about $0.25/GB delivered plus $0.035/GB for Parquet. Cents per month.
 - Lambda, EventBridge, CloudWatch Logs, Cognito (Lite, under 10,000 users), API Gateway (HTTP API):
   within the free tier at this volume
+- Video, per hour-long episode: about $0.05-0.10 of Fargate Spot time and about $0.05/month to
+  store the HLS renditions. **Watching is the cost to watch:** an hour of 1080p is 2-3 GB per
+  viewer, and past CloudFront's free 1 TB/month that's about $0.085/GB. Audio-only shows pay none
+  of this.
+- ECR: about $0.04/month for the transcoder image
 - Athena: $5/TB scanned with a 10 MB minimum per query, so about $0.0001 a night. The workgroup
   refuses any query over 1 GB.
 - DynamoDB on-demand with point-in-time recovery: pennies a month
@@ -258,7 +292,7 @@ pnpm synth         # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 
 1. **Hosting core and feed import** (done)
 2. **Download analytics and dashboard** (done)
-3. Video: ffmpeg on Fargate Spot to HLS, plus audio extraction
+3. **Video: ffmpeg on Fargate Spot to HLS, plus audio extraction** (done)
 4. YouTube upload and analytics
 5. HLS retention curves
 6. Prefix mode: analytics for shows that stay on another host

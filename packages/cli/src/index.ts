@@ -6,7 +6,7 @@ import { addDashboardUser, checkAnalytics, runAnalytics } from './commands/analy
 import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
-import { publish } from './commands/publish';
+import { bundleStatus, publish } from './commands/publish';
 import { putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
 import { validate } from './commands/validate';
 
@@ -32,7 +32,7 @@ show
 
 program
   .command('publish <path>')
-  .description('Publish an audio file, or a bundle directory with episode.json')
+  .description('Publish an audio or video file, or a bundle directory with episode.json')
   .requiredOption('--show <slug>')
   .option('--title <title>')
   .option('--description <html>', 'show notes (HTML)')
@@ -49,9 +49,14 @@ program
   .option('--transcript <file>', 'VTT, SRT or Podcasting 2.0 JSON')
   .option('--chapters <file>', 'Podcasting 2.0 JSON chapters')
   .option('--cover <file>', 'episode artwork')
-  .option('--video <file>', 'video for the phase 3 pipeline')
+  .option('--video <file>', 'video alongside the audio (e.g. an audiogram for YouTube)')
   .option('--no-wait', "don't wait for the publish result")
   .action((path, o) => publish(path, o, g()));
+
+program
+  .command('bundle <slug> <bundleId>')
+  .description('Show the result of an earlier upload (e.g. after video processing)')
+  .action((slug, id) => bundleStatus(slug, id, g()));
 
 program
   .command('import <feedUrl>')

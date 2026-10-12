@@ -112,6 +112,15 @@ function buildItem(
         rel: t.rel,
       }),
     ),
+    ...e.alternateEnclosures.map((a) =>
+      raw('podcast:alternateEnclosure', empty('podcast:source', { uri: url(a.asset) }), {
+        type: a.type,
+        title: a.title,
+        height: a.height,
+        bitrate: a.bitrate,
+        length: a.length,
+      }),
+    ),
     e.chapters
       ? empty('podcast:chapters', { url: url(e.chapters), type: 'application/json+chapters' })
       : '',

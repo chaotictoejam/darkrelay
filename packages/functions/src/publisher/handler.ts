@@ -7,17 +7,19 @@ import {
   UpdateScheduleCommand,
   type CreateScheduleCommandInput,
 } from '@aws-sdk/client-scheduler';
+import { ECSClient, RunTaskCommand } from '@aws-sdk/client-ecs';
 import type { Context } from 'aws-lambda';
 import type { EventBridgeEvent } from 'aws-lambda';
 import { S3Store } from '../lib/store';
 import { rebuildFeed, type PublisherDeps } from './feed';
-import { rebuildAll, routeObjectCreated } from './route';
+import { onTranscoderStopped, rebuildAll, routeObjectCreated, type StoppedTask } from './route';
 
 type S3ObjectCreated = EventBridgeEvent<
   'Object Created',
   { bucket: { name: string }; object: { key: string } }
 >;
 type Scheduled = EventBridgeEvent<'Scheduled Event', unknown>;
+type TaskStopped = EventBridgeEvent<'ECS Task State Change', StoppedTask>;
 /** Sent by the per-show one-shot schedule at the next release time. */
 type Release = { release: string };
 
@@ -29,6 +31,7 @@ const env = (name: string) => {
 
 const cloudfront = new CloudFrontClient({});
 const scheduler = new SchedulerClient({});
+const ecs = new ECSClient({});
 let selfArn = '';
 
 /** Upserts the show's one-shot release schedule, or deletes it. */
@@ -64,6 +67,37 @@ async function scheduleRelease(show: string, at: Date | undefined) {
 }
 const deps: PublisherDeps = {
   store: new S3Store(env('BUCKET_NAME')),
+  bucketName: env('BUCKET_NAME'),
+  async startTranscode(job, opts = {}) {
+    const r = await ecs.send(
+      new RunTaskCommand({
+        cluster: env('CLUSTER_ARN'),
+        taskDefinition: env('TASK_DEFINITION_ARN'),
+        count: 1,
+        startedBy: 'darkrelay',
+        capacityProviderStrategy: [
+          { capacityProvider: opts.spot === false ? 'FARGATE' : 'FARGATE_SPOT', weight: 1 },
+        ],
+        networkConfiguration: {
+          awsvpcConfiguration: {
+            subnets: env('SUBNETS').split(','),
+            securityGroups: [env('SECURITY_GROUP')],
+            // Public subnet + public IP instead of a NAT gateway.
+            assignPublicIp: 'ENABLED',
+          },
+        },
+        overrides: {
+          containerOverrides: [
+            {
+              name: env('CONTAINER_NAME'),
+              environment: [{ name: 'JOB', value: JSON.stringify(job) }],
+            },
+          ],
+        },
+      }),
+    );
+    if (r.failures?.length) throw new Error(`RunTask failed: ${JSON.stringify(r.failures)}`);
+  },
   baseUrl: env('PUBLIC_BASE_URL'),
   async invalidate(paths) {
     await cloudfront.send(
@@ -89,9 +123,15 @@ const deps: PublisherDeps = {
   log: (message, data) => console.log(JSON.stringify({ message, ...data })),
 };
 
-export async function handler(event: S3ObjectCreated | Scheduled | Release, context: Context) {
+export async function handler(
+  event: S3ObjectCreated | Scheduled | Release | TaskStopped,
+  context: Context,
+) {
   selfArn = context.invokedFunctionArn.split(':').slice(0, 7).join(':');
   if ('release' in event) return rebuildFeed(deps, event.release);
+  if (event['detail-type'] === 'ECS Task State Change') {
+    return onTranscoderStopped(deps, (event as TaskStopped).detail);
+  }
   if (event['detail-type'] === 'Scheduled Event') return rebuildAll(deps);
   return routeObjectCreated(deps, (event as S3ObjectCreated).detail.object.key);
 }

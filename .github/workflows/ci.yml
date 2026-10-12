@@ -16,6 +16,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install ffmpeg (transcoder tests run real encodes)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
@@ -34,3 +36,5 @@ jobs:
         run: |
           jq '.domain.hostedZoneId = "Z0000000000000"' darkrelay.config.example.json > /tmp/c.json
           DARKRELAY_CONFIG=/tmp/c.json pnpm synth
+      - name: Build transcoder image
+        run: docker build -f packages/transcoder/Dockerfile -t darkrelay-transcoder .

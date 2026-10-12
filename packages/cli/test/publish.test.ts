@@ -45,6 +45,31 @@ describe('planBundle', () => {
     expect(plan.sidecar).toBe(`${audio}.episode.json`);
   });
 
+  it('takes a bare video: audio gets extracted on Fargate', async () => {
+    const video = join(dir, 'HCU 04.mp4');
+    await writeFile(video, 'v');
+    const plan = await planBundle(
+      video,
+      { show: 'her-career-unplugged', title: 'Ep 4', description: 'd' },
+      duration,
+    );
+    expect(plan.files).toEqual([{ name: 'video.mp4', path: video }]);
+    expect(plan.input.durationSeconds).toBe(1800);
+  });
+
+  it('takes an audiogram alongside the audio', async () => {
+    const audio = join(dir, 'ep.mp3');
+    const gram = join(dir, 'audiogram.mp4');
+    await writeFile(audio, 'a');
+    await writeFile(gram, 'v');
+    const plan = await planBundle(
+      audio,
+      { show: 'cc', title: 'T', description: 'd', video: gram },
+      duration,
+    );
+    expect(plan.files.map((f) => f.name)).toEqual(['audio.mp3', 'video.mp4']);
+  });
+
   it('reuses the guid from a saved sidecar so re-publishing updates the episode', async () => {
     const audio = join(dir, 'ep.mp3');
     await writeFile(audio, 'x');

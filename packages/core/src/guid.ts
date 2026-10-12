@@ -32,6 +32,9 @@ export function podcastGuidFromFeedUrl(feedUrl: string): string {
   return uuidV5(name, PODCAST_GUID_NAMESPACE);
 }
 
+/** Namespace for GUIDs DarkRelay derives itself (e.g. for a bundle uploaded without one). */
+export const DARKRELAY_NAMESPACE = '6f0b4c1e-2d7a-5e8b-9c3f-1a2b3c4d5e6f';
+
 export function newEpisodeGuid(): string {
   return randomUUID();
 }

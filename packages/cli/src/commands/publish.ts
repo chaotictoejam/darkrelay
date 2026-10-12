@@ -46,7 +46,7 @@ export interface PlannedBundle {
 export type DurationOf = (path: string) => Promise<number | undefined>;
 
 /**
- * Turns a bundle directory, or a bare audio file plus flags, into the files to
+ * Turns a bundle directory, or a bare audio or video file plus flags, into the files to
  * upload. Flags override episode.json. Throws with every problem at once.
  */
 export async function planBundle(
@@ -65,7 +65,9 @@ export async function planBundle(
     }
   } else {
     sidecar = `${target}.episode.json`;
-    files.push({ name: `audio${extname(target).toLowerCase()}`, path: target });
+    const ext = extname(target).toLowerCase();
+    // A video upload: the audio for the feed is extracted from it on Fargate.
+    files.push({ name: ext === '.mp4' ? 'video.mp4' : `audio${ext}`, path: target });
   }
   const extra = (role: string, path: string | undefined) => {
     if (!path) return;
@@ -86,11 +88,11 @@ export async function planBundle(
   const base: Partial<EpisodeInputRaw> = await readFile(sidecar, 'utf8')
     .then((t) => JSON.parse(t) as Partial<EpisodeInputRaw>)
     .catch(() => ({}));
-  const audioPath = upload.find((f) => f.name === roles.audio)!.path;
+  const mediaPath = upload.find((f) => f.name === (roles.audio ?? roles.video))!.path;
   const description = flags.notes
     ? await readFile(flags.notes, 'utf8')
     : (flags.description ?? base.description);
-  const duration = base.durationSeconds ?? (await durationOf(audioPath));
+  const duration = base.durationSeconds ?? (await durationOf(mediaPath));
 
   const raw: EpisodeInputRaw = {
     ...base,
@@ -141,10 +143,14 @@ export async function publish(target: string, flags: PublishFlags, global: Globa
 
   if (flags.wait === false) return;
   const status = await waitForStatus(bucket, layout.inboxStatus(flags.show, bundleId));
-  if (!status) {
-    console.log('Still processing. Check later with: darkrelay status ' + flags.show);
+  if (!status || status['status'] === 'processing') {
+    console.log(`Still processing. Check later with: darkrelay bundle ${flags.show} ${bundleId}`);
     return;
   }
+  reportStatus(status, flags.show);
+}
+
+export function reportStatus(status: Record<string, unknown>, show: string) {
   if (status['status'] !== 'published') {
     console.log(JSON.stringify(status, null, 2));
     process.exitCode = 1;
@@ -153,8 +159,7 @@ export async function publish(target: string, flags: PublishFlags, global: Globa
   if (typeof status['scheduledFor'] === 'string') {
     console.log(`Scheduled: releases ${describeTime(status['scheduledFor'])}.`);
     console.log(
-      'It is not in the feed until then. See upcoming episodes with: darkrelay episodes ' +
-        flags.show,
+      'It is not in the feed until then. See upcoming episodes with: darkrelay episodes ' + show,
     );
   } else {
     console.log(`Published. Feed ${status['feed']}.`);
@@ -162,12 +167,45 @@ export async function publish(target: string, flags: PublishFlags, global: Globa
   if (status['feedErrors']) console.log(JSON.stringify(status['feedErrors'], null, 2));
 }
 
-async function waitForStatus(bucket: Bucket, key: string, timeoutMs = 120_000) {
-  const until = Date.now() + timeoutMs;
-  while (Date.now() < until) {
+/**
+ * Waits for the publisher's verdict. Audio publishes in seconds; video first
+ * goes through Fargate, which takes roughly the episode's length, so while
+ * the status says "processing" this keeps waiting (up to 3 hours).
+ */
+async function waitForStatus(bucket: Bucket, key: string) {
+  const start = Date.now();
+  let deadline = start + 120_000;
+  let announced = false;
+  let lastNote = start;
+  while (Date.now() < deadline) {
     const text = await bucket.getText(key);
-    if (text) return JSON.parse(text) as Record<string, unknown>;
-    await new Promise((r) => setTimeout(r, 3000));
+    const status = text ? (JSON.parse(text) as Record<string, unknown>) : undefined;
+    if (status && status['status'] !== 'processing') return status;
+    if (status && !announced) {
+      announced = true;
+      deadline = start + 3 * 3600_000;
+      console.log(
+        'Processing video on Fargate (roughly the length of the episode). Ctrl-C is safe; it keeps going.',
+      );
+    }
+    if (announced && Date.now() - lastNote > 300_000) {
+      lastNote = Date.now();
+      console.log(`  still processing (${Math.round((Date.now() - start) / 60_000)} min)`);
+    }
+    await new Promise((r) => setTimeout(r, announced ? 15_000 : 3000));
   }
   return undefined;
+}
+
+/** Prints the result of an earlier upload. */
+export async function bundleStatus(show: string, bundleId: string, global: GlobalOptions) {
+  const { bucket: name } = await resolveDeployment(global);
+  const text = await new Bucket(name).getText(layout.inboxStatus(show, bundleId));
+  if (!text) {
+    console.log('No result yet (or it expired after 30 days).');
+    return;
+  }
+  const status = JSON.parse(text) as Record<string, unknown>;
+  if (status['status'] === 'processing') console.log('Still processing video.');
+  else reportStatus(status, show);
 }

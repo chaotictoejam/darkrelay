@@ -11,3 +11,4 @@ export * from './analytics/logs';
 export * from './analytics/counting';
 export * from './analytics/metrics';
 export * from './analytics/useragent';
+export * from './video';

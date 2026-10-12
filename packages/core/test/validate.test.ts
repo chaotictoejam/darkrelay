@@ -65,4 +65,14 @@ describe('validateFeed', () => {
       'channel/itunes:explicit',
     ]);
   });
+
+  it('requires a type and a source on alternate enclosures', () => {
+    const r = validateFeed(
+      minimal(item('a', '<podcast:alternateEnclosure title="Video"></podcast:alternateEnclosure>')),
+    );
+    expect(paths(r.errors)).toEqual([
+      'item[0]/podcast:alternateEnclosure[0]',
+      'item[0]/podcast:alternateEnclosure[0]',
+    ]);
+  });
 });

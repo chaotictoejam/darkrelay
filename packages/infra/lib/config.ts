@@ -34,6 +34,33 @@ export const DeploymentConfig = z.object({
   logs: z
     .object({ retentionDays: z.number().int().positive().default(90) })
     .default({ retentionDays: 90 }),
+  /** Fargate size for video transcoding. Bigger is faster; Spot price scales with it. */
+  transcoder: z
+    .object({
+      cpu: z
+        .union([
+          z.literal(1024),
+          z.literal(2048),
+          z.literal(4096),
+          z.literal(8192),
+          z.literal(16384),
+        ])
+        .default(4096),
+      memoryMiB: z.number().int().min(2048).default(8192),
+      /** Scratch disk for the source video plus outputs. 21-200 GiB; the first 20 are free. */
+      ephemeralGiB: z.number().int().min(21).max(200).default(60),
+      /** Set explicitly so synth needs no AWS lookup. Every us-east-1 account has a and b. */
+      availabilityZones: z
+        .array(z.string().startsWith('us-east-1'))
+        .min(1)
+        .default(['us-east-1a', 'us-east-1b']),
+    })
+    .default({
+      cpu: 4096,
+      memoryMiB: 8192,
+      ephemeralGiB: 60,
+      availabilityZones: ['us-east-1a', 'us-east-1b'],
+    }),
   /** CloudFront edge coverage. "100" (North America and Europe) is the cheapest. */
   priceClass: z.enum(['100', '200', 'All']).default('100'),
 });

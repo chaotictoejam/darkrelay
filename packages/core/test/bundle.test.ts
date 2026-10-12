@@ -33,6 +33,14 @@ describe('classifyBundle', () => {
     expect(r.errors[0]).toMatch(/export MP3/);
   });
 
+  it('accepts a video-only bundle (audio is extracted) and skips processed.json', () => {
+    expect(classifyBundle(['episode.json', 'video.mp4', 'processed.json'])).toEqual({
+      files: { video: 'video.mp4', transcripts: [] },
+      errors: [],
+      ignored: [],
+    });
+  });
+
   it('rejects two audio files', () => {
     expect(classifyBundle(['audio.mp3', 'audio.m4a']).errors[0]).toMatch(/More than one audio/);
   });

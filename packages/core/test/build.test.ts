@@ -98,4 +98,29 @@ describe('buildFeed', () => {
     expect(validateFeed(xml).ok).toBe(true);
     expect(text(parseFeedXml(xml).items[0]!['description'])).toBe('a ]]> <b>b</b>');
   });
+
+  it('lists HLS video as a valid podcast:alternateEnclosure', () => {
+    const xml = buildFeed({
+      show: show(),
+      episodes: [
+        episode({
+          alternateEnclosures: [
+            {
+              asset: { key: 'example/abc/v1/hls/master.m3u8' },
+              type: 'application/x-mpegURL',
+              title: 'Video',
+              height: 1080,
+              bitrate: 5600000,
+            },
+          ],
+        }),
+      ],
+      baseUrl: BASE_URL,
+      now: NOW,
+    });
+    expect(xml).toContain(
+      `<podcast:alternateEnclosure type="application/x-mpegURL" title="Video" height="1080" bitrate="5600000"><podcast:source uri="${BASE_URL}/example/abc/v1/hls/master.m3u8"/></podcast:alternateEnclosure>`,
+    );
+    expect(validateFeed(xml)).toMatchObject({ errors: [], warnings: [] });
+  });
 });

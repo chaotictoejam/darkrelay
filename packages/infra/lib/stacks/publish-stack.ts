@@ -11,13 +11,15 @@ import {
   aws_s3 as s3,
 } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
+import type { DeploymentConfig } from '../config';
 import { nodeFunction } from '../lambda';
+import { Transcoder } from '../transcoder';
 
 export interface PublishStackProps extends StackProps {
   mediaBucket: s3.IBucket;
   distribution: cloudfront.IDistribution;
   publicBaseUrl: string;
-  stackPrefix: string;
+  config: DeploymentConfig;
 }
 
 /**
@@ -27,13 +29,20 @@ export interface PublishStackProps extends StackProps {
  */
 export class PublishStack extends Stack {
   readonly publisher: nodejs.NodejsFunction;
+  private readonly azs: string[];
+
+  /** Fixed from config so synth never needs an AWS lookup. */
+  override get availabilityZones(): string[] {
+    return this.azs;
+  }
 
   constructor(scope: Construct, id: string, props: PublishStackProps) {
     super(scope, id, props);
+    this.azs = props.config.transcoder.availabilityZones;
 
     // One-shot schedules, one per show, that rebuild the feed at the next release time.
     const scheduleGroup = new scheduler.CfnScheduleGroup(this, 'Releases', {
-      name: `${props.stackPrefix}-releases`,
+      name: `${props.config.stackPrefix}-releases`,
     });
     const schedulerRole = new iam.Role(this, 'ReleaseSchedulerRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
@@ -43,7 +52,8 @@ export class PublishStack extends Stack {
 
     this.publisher = nodeFunction(this, 'Publisher', {
       entry: 'publisher/handler.ts',
-      timeout: Duration.minutes(2),
+      // Long enough to copy a large video into place after transcoding.
+      timeout: Duration.minutes(10),
       environment: {
         BUCKET_NAME: props.mediaBucket.bucketName,
         PUBLIC_BASE_URL: props.publicBaseUrl,
@@ -73,6 +83,12 @@ export class PublishStack extends Stack {
       new iam.PolicyStatement({ actions: ['iam:PassRole'], resources: [schedulerRole.roleArn] }),
     );
     this.publisher.node.addDependency(scheduleGroup);
+
+    new Transcoder(this, 'Transcoder', {
+      config: props.config,
+      bucket: props.mediaBucket,
+      publisher: this.publisher,
+    });
     props.mediaBucket.grantReadWrite(this.publisher);
     props.mediaBucket.grantDelete(this.publisher);
     props.distribution.grantCreateInvalidation(this.publisher);
@@ -88,6 +104,7 @@ export class PublishStack extends Stack {
           object: {
             key: [
               ...events.Match.suffix('/episode.json'),
+              ...events.Match.suffix('/processed.json'),
               ...events.Match.suffix('/show.json'),
               ...events.Match.suffix('/rebuild'),
             ],

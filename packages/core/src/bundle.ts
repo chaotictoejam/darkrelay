@@ -45,6 +45,9 @@ export function contentTypeFor(file: string): string {
   return CONTENT_TYPES[ext] ?? 'application/octet-stream';
 }
 
+/** Written into a bundle by the transcoder when it finishes. */
+export const PROCESSED_FILE = 'processed.json';
+
 export interface BundleFiles {
   audio?: string;
   video?: string;
@@ -65,7 +68,10 @@ const TRANSCRIPT_TYPES: Record<string, string> = {
   'transcript.json': 'application/json',
 };
 
-/** Sorts bundle file names into roles. `episode.json` is expected and skipped. */
+/**
+ * Sorts bundle file names into roles. `episode.json` and `processed.json` are
+ * expected and skipped. A bundle needs audio, or video to extract audio from.
+ */
 export function classifyBundle(names: string[]): ClassifyResult {
   const files: BundleFiles = { transcripts: [] };
   const errors: string[] = [];
@@ -77,7 +83,7 @@ export function classifyBundle(names: string[]): ClassifyResult {
 
   for (const name of names) {
     const lower = name.toLowerCase();
-    if (lower === 'episode.json') continue;
+    if (lower === 'episode.json' || lower === PROCESSED_FILE) continue;
     if (lower === 'audio.mp3' || lower === 'audio.m4a') set('audio', name);
     else if (lower === 'audio.wav' || lower === 'audio.flac')
       errors.push(
@@ -91,7 +97,8 @@ export function classifyBundle(names: string[]): ClassifyResult {
       files.transcripts.push({ file: name, type: TRANSCRIPT_TYPES[lower] });
     else ignored.push(name);
   }
-  if (!files.audio) errors.push('Bundle has no audio.mp3 or audio.m4a');
+  if (!files.audio && !files.video)
+    errors.push('Bundle has no audio (audio.mp3, audio.m4a) or video (video.mp4)');
   return { files, errors, ignored };
 }
 

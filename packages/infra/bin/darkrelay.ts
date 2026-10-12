@@ -16,7 +16,7 @@ new PublishStack(app, `${config.stackPrefix}Publish`, {
   mediaBucket: hosting.mediaBucket,
   distribution: hosting.distribution,
   publicBaseUrl: hosting.publicBaseUrl,
-  stackPrefix: config.stackPrefix,
+  config,
 });
 const analytics = new AnalyticsStack(app, `${config.stackPrefix}Analytics`, {
   env,

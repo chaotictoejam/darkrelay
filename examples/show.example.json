@@ -6,9 +6,20 @@
   "link": "https://example.com",
   "language": "en",
   "author": "Your Name",
-  "owner": { "name": "Your Name", "email": "you@example.com" },
-  "categories": [{ "text": "Technology" }],
+  "owner": {
+    "name": "Your Name",
+    "email": "you@example.com"
+  },
+  "categories": [
+    {
+      "text": "Technology"
+    }
+  ],
   "explicit": false,
   "type": "episodic",
-  "podcastIndexNotify": false
+  "podcastIndexNotify": false,
+  "video": {
+    "hls": false,
+    "ladder": [1080, 720, 480]
+  }
 }

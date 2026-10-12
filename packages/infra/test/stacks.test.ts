@@ -18,7 +18,7 @@ function synth(input: DeploymentConfigInput) {
     mediaBucket: hosting.mediaBucket,
     distribution: hosting.distribution,
     publicBaseUrl: hosting.publicBaseUrl,
-    stackPrefix: config.stackPrefix,
+    config,
   });
   const analytics = new AnalyticsStack(app, 'Analytics', {
     env,
@@ -162,12 +162,69 @@ describe('publisher', () => {
         'detail-type': ['Object Created'],
         detail: Match.objectLike({
           object: {
-            key: [{ suffix: '/episode.json' }, { suffix: '/show.json' }, { suffix: '/rebuild' }],
+            key: [
+              { suffix: '/episode.json' },
+              { suffix: '/processed.json' },
+              { suffix: '/show.json' },
+              { suffix: '/rebuild' },
+            ],
           },
         }),
       }),
     });
     t.publish.hasResourceProperties('AWS::Events::Rule', { ScheduleExpression: 'rate(1 hour)' });
+  });
+});
+
+describe('transcoder', () => {
+  it('uses public subnets with no NAT gateway and a free S3 gateway endpoint', () => {
+    t.publish.resourceCountIs('AWS::EC2::NatGateway', 0);
+    const subnets = Object.values(t.publish.findResources('AWS::EC2::Subnet'));
+    expect(subnets.length).toBe(2);
+    for (const sn of subnets) expect(sn['Properties'].MapPublicIpOnLaunch).toBe(true);
+    t.publish.hasResourceProperties('AWS::EC2::VPCEndpoint', { VpcEndpointType: 'Gateway' });
+    t.publish.resourceCountIs('AWS::EC2::VPCEndpoint', 1); // no paid interface endpoints
+  });
+
+  it('runs on Fargate Spot with the configured size and scratch disk', () => {
+    t.publish.hasResourceProperties('AWS::ECS::ClusterCapacityProviderAssociations', {
+      CapacityProviders: ['FARGATE', 'FARGATE_SPOT'],
+    });
+    t.publish.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      Cpu: '4096',
+      Memory: '8192',
+      EphemeralStorage: { SizeInGiB: 60 },
+      RequiresCompatibilities: ['FARGATE'],
+    });
+  });
+
+  it('lets the task read uploads and write outputs, but not delete', () => {
+    const policies = JSON.stringify(t.publish.findResources('AWS::IAM::Policy'));
+    expect(policies).toContain('ecs:RunTask');
+    const taskPolicies = Object.entries(t.publish.findResources('AWS::IAM::Policy'))
+      .filter(([id]) => id.includes('TranscoderTaskTaskRole'))
+      .map(([, p]) => JSON.stringify(p));
+    expect(taskPolicies).toHaveLength(1);
+    expect(taskPolicies[0]).toContain('s3:PutObject');
+    expect(taskPolicies[0]).not.toContain('s3:DeleteObject');
+  });
+
+  it('sends stopped tasks back to the publisher and gives it the RunTask settings', () => {
+    t.publish.hasResourceProperties('AWS::Events::Rule', {
+      EventPattern: Match.objectLike({
+        source: ['aws.ecs'],
+        detail: Match.objectLike({ lastStatus: ['STOPPED'] }),
+      }),
+    });
+    t.publish.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          CONTAINER_NAME: 'transcoder',
+          SUBNETS: Match.anyValue(),
+          SECURITY_GROUP: Match.anyValue(),
+        }),
+      },
+    });
   });
 });
 

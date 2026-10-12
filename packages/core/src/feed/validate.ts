@@ -155,6 +155,18 @@ function validateItem(
     else if (!TRANSCRIPT_TYPES.has(type)) warn(tp, `unusual transcript type: ${type}`);
   });
 
+  list(item['podcast:alternateEnclosure']).forEach((a, j) => {
+    const ap = `${p}/podcast:alternateEnclosure[${j}]`;
+    if (!attr(a, 'type')) err(ap, 'type attribute required');
+    const sources = isNode(a) ? list(a['podcast:source']) : [];
+    if (sources.length === 0) err(ap, 'at least one podcast:source required');
+    sources.forEach((src) => {
+      const uri = attr(src, 'uri');
+      if (!uri) err(`${ap}/podcast:source`, 'uri attribute required');
+      else checkUrl(uri, `${ap}/podcast:source`, err, warn);
+    });
+  });
+
   const chapters = item['podcast:chapters'];
   if (chapters !== undefined) {
     const cp = `${p}/podcast:chapters`;

@@ -1,0 +1,5 @@
+**/node_modules
+**/dist
+**/cdk.out
+.git
+darkrelay.config.json

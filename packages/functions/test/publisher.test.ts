@@ -1,8 +1,14 @@
-import { layout, parseFeedXml, text, type ShowConfigInput } from '@darkrelay/core';
+import {
+  layout,
+  parseFeedXml,
+  text,
+  type ShowConfigInput,
+  type TranscodeJob,
+} from '@darkrelay/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PublisherDeps } from '../src/publisher/feed';
 import { rebuildFeed } from '../src/publisher/feed';
-import { rebuildAll, routeObjectCreated } from '../src/publisher/route';
+import { onTranscoderStopped, rebuildAll, routeObjectCreated } from '../src/publisher/route';
 import { MemoryStore } from './memory-store';
 
 const BASE = 'https://media.example.com';
@@ -10,6 +16,7 @@ let store: MemoryStore;
 let invalidations: string[][];
 let pings: string[];
 let schedules: Map<string, string | undefined>;
+let transcodes: { job: TranscodeJob; spot?: boolean }[];
 let now: Date;
 let deps: PublisherDeps;
 
@@ -57,9 +64,12 @@ beforeEach(() => {
   invalidations = [];
   pings = [];
   schedules = new Map();
+  transcodes = [];
   now = new Date('2026-10-11T12:00:00Z');
   deps = {
     store,
+    bucketName: 'media',
+    startTranscode: async (job, opts) => void transcodes.push({ job, spot: opts?.spot }),
     baseUrl: BASE,
     invalidate: async (p) => void invalidations.push(p),
     notifyPodcastIndex: async (u) => void pings.push(u),
@@ -264,5 +274,164 @@ describe('scheduled releases', () => {
     now = new Date('2026-10-20T10:00:00Z');
     expect(await rebuildAll(deps)).toEqual({ show: 'written' });
     expect(feedGuids()).toEqual(['later']);
+  });
+});
+
+describe('video', () => {
+  const videoShow = () =>
+    store.seed(
+      layout.showConfig('show'),
+      JSON.stringify(showConfig({ video: { hls: true, ladder: [1080, 720] } })),
+    );
+
+  /** What the Fargate task does: audio and HLS into place, then processed.json. */
+  function finishTranscode(job: TranscodeJob, ok = true) {
+    if (ok) {
+      store.seed(job.bundlePrefix + 'audio.mp3', 'x'.repeat(50));
+      store.seed(job.hls!.prefix + 'master.m3u8', '#EXTM3U');
+    }
+    store.seed(
+      job.bundlePrefix + 'processed.json',
+      JSON.stringify(
+        ok
+          ? {
+              ok: true,
+              audio: 'audio.mp3',
+              hls: {
+                masterKey: job.hls!.prefix + 'master.m3u8',
+                renditions: [
+                  { height: 1080, width: 1920, bandwidth: 5_600_000 },
+                  { height: 720, width: 1280, bandwidth: 2_500_000 },
+                ],
+              },
+              durationSeconds: 1800,
+              finishedAt: '2026-10-11T12:10:00Z',
+            }
+          : {
+              ok: false,
+              error: 'No video stream in the uploaded file',
+              finishedAt: '2026-10-11T12:10:00Z',
+            },
+      ),
+    );
+    return routeObjectCreated(deps, job.bundlePrefix + 'processed.json');
+  }
+
+  it('video-only upload: transcode first, then publish with extracted audio and HLS', async () => {
+    videoShow();
+    const first = await upload('b1', {
+      'video.mp4': 'v'.repeat(200),
+      'episode.json': episodeJson(),
+    });
+    expect(first).toMatchObject({ status: 'processing', guid: 'guid-1' });
+    expect(store.text(feedKey)).toBeUndefined();
+    expect(store.json(layout.inboxStatus('show', 'b1'))).toMatchObject({ status: 'processing' });
+
+    const { job, spot } = transcodes[0]!;
+    expect(spot).toBeUndefined(); // Spot by default
+    expect(job).toMatchObject({
+      bucket: 'media',
+      bundlePrefix: 'inbox/show/b1/',
+      video: 'video.mp4',
+      extractAudio: true,
+      hls: { ladder: [1080, 720] },
+    });
+    expect(job.hls!.prefix).toMatch(/^public\/show\/[0-9a-f]{16}\/b1\/hls\/$/);
+
+    const second = await finishTranscode(job);
+    expect(second).toMatchObject({ status: 'published', feed: 'written' });
+    const xml = store.text(feedKey)!;
+    expect(xml).toMatch(/<enclosure url="[^"]+\/b1\/audio\.mp3" length="50" type="audio\/mpeg"\/>/);
+    expect(xml).toContain(
+      '<podcast:alternateEnclosure type="application/x-mpegURL" title="Video" height="1080" bitrate="5600000">',
+    );
+    expect(xml).toMatch(
+      /<podcast:source uri="https:\/\/media\.example\.com\/show\/[0-9a-f]{16}\/b1\/hls\/master\.m3u8"\/>/,
+    );
+    expect(await store.list('inbox/')).toEqual([]);
+  });
+
+  it('audiogram show: audio + video publish immediately, video kept, nothing streamed', async () => {
+    const result = await upload('b1', {
+      'audio.mp3': 'x',
+      'video.mp4': 'v',
+      'episode.json': episodeJson(),
+    });
+    expect(result).toMatchObject({ status: 'published' });
+    expect(transcodes).toEqual([]);
+    const manifest = store.json((await store.list(layout.episodesPrefix('show')))[0]!.key);
+    expect(manifest.video.key).toMatch(/\/b1\/video\.mp4$/);
+    expect(manifest.alternateEnclosures).toEqual([]);
+    expect(store.text(feedKey)).not.toContain('alternateEnclosure');
+  });
+
+  it('audiogram show with only a video: extracts audio but builds no HLS', async () => {
+    await upload('b1', { 'video.mp4': 'v', 'episode.json': episodeJson() });
+    expect(transcodes[0]!.job).toMatchObject({ extractAudio: true, hls: undefined });
+  });
+
+  it('a guid-less video bundle keeps the same guid across both passes', async () => {
+    videoShow();
+    const first = (await upload('b1', {
+      'video.mp4': 'v',
+      'episode.json': episodeJson({ guid: undefined }),
+    })) as {
+      guid: string;
+    };
+    const second = (await finishTranscode(transcodes[0]!.job)) as { guid: string };
+    expect(second.guid).toBe(first.guid);
+  });
+
+  it('rejects the bundle when transcoding fails', async () => {
+    videoShow();
+    await upload('b1', { 'video.mp4': 'v', 'episode.json': episodeJson() });
+    expect(await finishTranscode(transcodes[0]!.job, false)).toEqual({
+      status: 'rejected',
+      errors: ['Video processing failed: No video stream in the uploaded file'],
+    });
+    expect(store.text(feedKey)).toBeUndefined();
+  });
+
+  describe('when the task stops', () => {
+    const stopped = (job: TranscodeJob, reason = 'Your Spot Task was interrupted.') => ({
+      stoppedReason: reason,
+      overrides: {
+        containerOverrides: [{ environment: [{ name: 'JOB', value: JSON.stringify(job) }] }],
+      },
+    });
+
+    it('retries a Spot interruption once on regular Fargate, then fails the bundle', async () => {
+      videoShow();
+      await upload('b1', { 'video.mp4': 'v', 'episode.json': episodeJson() });
+      const job = transcodes[0]!.job;
+
+      expect(await onTranscoderStopped(deps, stopped(job))).toBe('retried');
+      expect(transcodes[1]).toMatchObject({ spot: false, job: { attempt: 2 } });
+
+      expect(
+        await onTranscoderStopped(deps, stopped(transcodes[1]!.job, 'Essential container exited')),
+      ).toBe('failed');
+      const result = await routeObjectCreated(deps, job.bundlePrefix + 'processed.json');
+      expect(result).toMatchObject({ status: 'rejected' });
+      expect((result as { errors: string[] }).errors[0]).toMatch(
+        /stopped twice.*Essential container exited/,
+      );
+    });
+
+    it('does nothing when the task finished normally', async () => {
+      videoShow();
+      await upload('b1', { 'video.mp4': 'v', 'episode.json': episodeJson() });
+      const job = transcodes[0]!.job;
+      await finishTranscode(job);
+      // The bundle is published and cleaned up by now; processed.json is gone too,
+      // so check against a fresh in-flight bundle instead.
+      store.seed(job.bundlePrefix + 'processed.json', '{}');
+      expect(await onTranscoderStopped(deps, stopped(job))).toBe('finished');
+      expect(transcodes).toHaveLength(1);
+    });
+
+    it('ignores tasks that are not transcoder jobs', async () => {
+      expect(await onTranscoderStopped(deps, {})).toBeUndefined();
+    });
   });
 });

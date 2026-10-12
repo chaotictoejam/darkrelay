@@ -6,10 +6,16 @@ import {
   episodeId,
   layout,
   MEDIA_CACHE_CONTROL,
-  newEpisodeGuid,
+  DARKRELAY_NAMESPACE,
+  PROCESSED_FILE,
+  PUBLIC_PREFIX,
+  ProcessedResult,
+  planProcessing,
+  uuidV5,
   publicKey,
   validateChapters,
   type EpisodeManifestInput,
+  type TranscodeJob,
 } from '@darkrelay/core';
 import { loadShow, rebuildFeed, type PublisherDeps, type RebuildResult } from './feed';
 
@@ -24,6 +30,7 @@ export type BundleStatus =
       scheduledFor?: string;
       ignoredFiles: string[];
     }
+  | { status: 'processing'; guid: string; episodeId: string; job: TranscodeJob }
   | { status: 'rejected'; errors: string[] };
 
 /**
@@ -90,8 +97,28 @@ async function tryPublish(
   }
   if (errors.length > 0) return { status: 'rejected', errors };
 
-  const guid = input.guid ?? newEpisodeGuid();
+  // Derived from the bundle when absent, so the second pass after
+  // transcoding arrives at the same guid.
+  const guid = input.guid ?? uuidV5(`${slug}/${bundleId}`, DARKRELAY_NAMESPACE);
   const id = episodeId(guid);
+
+  const processedRaw = await store.getText(prefix + PROCESSED_FILE);
+  const processed = processedRaw ? ProcessedResult.parse(JSON.parse(processedRaw)) : undefined;
+  if (processed && !processed.ok) {
+    return { status: 'rejected', errors: [`Video processing failed: ${processed.error}`] };
+  }
+  if (!processed) {
+    const hlsPrefix = `${publicKey(layout.episodeAsset(slug, id, bundleId, 'hls'))}/`;
+    const job = planProcessing(files, show, deps.bucketName, prefix, hlsPrefix);
+    if (job) {
+      await deps.startTranscode(job);
+      return { status: 'processing', guid, episodeId: id, job };
+    }
+  }
+  if (!files.audio) {
+    return { status: 'rejected', errors: ['Video processing finished but produced no audio'] };
+  }
+  const hls = processed?.ok ? processed.hls : undefined;
   const previousRaw = await store.getText(layout.episodeManifest(slug, id));
   const previous = previousRaw ? EpisodeManifest.parse(JSON.parse(previousRaw)) : undefined;
 
@@ -104,7 +131,7 @@ async function tryPublish(
     return { key };
   };
 
-  const audio = files.audio!;
+  const audio = files.audio;
   const audioSize = objects.find((o) => o.key === prefix + audio)!.size;
   const manifestInput: EpisodeManifestInput = {
     schemaVersion: 1,
@@ -122,6 +149,17 @@ async function tryPublish(
     explicit: input.explicit,
     image: files.cover ? await copyTo(files.cover) : previous?.image,
     enclosure: { asset: await copyTo(audio), length: audioSize, type: contentTypeFor(audio) },
+    alternateEnclosures: hls
+      ? [
+          {
+            asset: { key: hls.masterKey.slice(PUBLIC_PREFIX.length) },
+            type: 'application/x-mpegURL',
+            title: 'Video',
+            height: Math.max(...hls.renditions.map((r) => r.height)),
+            bitrate: Math.max(...hls.renditions.map((r) => r.bandwidth)),
+          },
+        ]
+      : (previous?.alternateEnclosures ?? []),
     transcripts: await Promise.all(
       files.transcripts.map(async (t) => ({
         asset: await copyTo(t.file),

@@ -9,11 +9,15 @@ import {
   publicKey,
   validateFeed,
   type Issue,
+  type TranscodeJob,
 } from '@darkrelay/core';
 import type { Store } from '../lib/store';
 
 export interface PublisherDeps {
   store: Store;
+  bucketName: string;
+  /** Starts the Fargate transcoder. `spot: false` runs on regular Fargate (the retry). */
+  startTranscode(job: TranscodeJob, opts?: { spot?: boolean }): Promise<void>;
   baseUrl: string;
   invalidate(paths: string[]): Promise<void>;
   notifyPodcastIndex(feedUrl: string): Promise<void>;

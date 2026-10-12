@@ -49,6 +49,18 @@ export const ShowConfig = z.object({
   /** Set only on a feed that is being retired, to send apps to its replacement. */
   newFeedUrl: z.url().optional(),
   podcastIndexNotify: z.boolean().default(false),
+  video: z
+    .object({
+      /**
+       * Build HLS from uploaded video and list it in the feed as a
+       * podcast:alternateEnclosure. Off for audio-first shows (an audiogram
+       * is kept for YouTube but not streamed).
+       */
+      hls: z.boolean().default(false),
+      /** HLS rendition heights; renditions taller than the source are skipped. */
+      ladder: z.array(z.number().int().min(144).max(2160)).min(1).default([1080, 720, 480]),
+    })
+    .default({ hls: false, ladder: [1080, 720, 480] }),
   source: z
     .object({
       feedUrl: z.url(),
@@ -73,6 +85,16 @@ export const Transcript = z.object({
   rel: z.string().optional(),
 });
 
+export const AlternateEnclosure = z.object({
+  asset: AssetRef,
+  type: z.string().min(1),
+  title: z.string().optional(),
+  height: z.number().int().positive().optional(),
+  bitrate: z.number().int().positive().optional(),
+  length: z.number().int().nonnegative().optional(),
+});
+export type AlternateEnclosure = z.infer<typeof AlternateEnclosure>;
+
 export const EpisodeManifest = z.object({
   schemaVersion: z.literal(1),
   /** RSS item <guid>, kept byte-for-byte. Apps use it to tell episodes apart. */
@@ -91,11 +113,12 @@ export const EpisodeManifest = z.object({
   explicit: z.boolean().optional(),
   image: AssetRef.optional(),
   enclosure: Enclosure,
+  alternateEnclosures: z.array(AlternateEnclosure).default([]),
   transcripts: z.array(Transcript).default([]),
   chapters: AssetRef.optional(),
   persons: z.array(Person).default([]),
   keywords: z.array(z.string()).default([]),
-  /** Phase 3: the original video, kept for transcoding. Not in the feed yet. */
+  /** The uploaded video as-is (an audiogram or full video), kept for YouTube. Not in the feed. */
   video: AssetRef.optional(),
   /** Original URLs of files copied in by migrate-media, keyed by role. */
   migratedFrom: z.record(z.string(), z.url()).optional(),
