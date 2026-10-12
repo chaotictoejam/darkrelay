@@ -8,6 +8,9 @@ import type { AssetRef } from './model';
  */
 export const PUBLIC_PREFIX = 'public/';
 
+/** Media keys are versioned (a new upload gets a new key), so caches can keep them forever. */
+export const MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
 export const layout = {
   showConfig: (show: string) => `catalog/${show}/show.json`,
   episodesPrefix: (show: string) => `catalog/${show}/episodes/`,

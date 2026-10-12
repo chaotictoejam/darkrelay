@@ -97,6 +97,8 @@ export const EpisodeManifest = z.object({
   keywords: z.array(z.string()).default([]),
   /** Phase 3: the original video, kept for transcoding. Not in the feed yet. */
   video: AssetRef.optional(),
+  /** Original URLs of files copied in by migrate-media, keyed by role. */
+  migratedFrom: z.record(z.string(), z.url()).optional(),
   updatedAt: z.iso.datetime(),
 });
 export type EpisodeManifest = z.infer<typeof EpisodeManifest>;

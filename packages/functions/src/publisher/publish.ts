@@ -5,14 +5,13 @@ import {
   contentTypeFor,
   episodeId,
   layout,
+  MEDIA_CACHE_CONTROL,
   newEpisodeGuid,
   publicKey,
   validateChapters,
   type EpisodeManifestInput,
 } from '@darkrelay/core';
 import { loadShow, rebuildFeed, type PublisherDeps, type RebuildResult } from './feed';
-
-export const MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 export type BundleStatus =
   | {

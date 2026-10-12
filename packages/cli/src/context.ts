@@ -2,6 +2,7 @@ import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-clo
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   NoSuchKey,
   NotFound,
   PutObjectCommand,
@@ -9,6 +10,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { createReadStream } from 'node:fs';
+import type { Readable } from 'node:stream';
 
 export interface Deployment {
   bucket: string;
@@ -81,6 +83,33 @@ export class Bucket {
         Bucket: this.name,
         Key: key,
         Body: createReadStream(path),
+        ContentType: contentType,
+        CacheControl: cacheControl,
+      },
+    }).done();
+  }
+
+  async list(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let token: string | undefined;
+    do {
+      const r = await this.s3.send(
+        new ListObjectsV2Command({ Bucket: this.name, Prefix: prefix, ContinuationToken: token }),
+      );
+      for (const o of r.Contents ?? []) keys.push(o.Key!);
+      token = r.NextContinuationToken;
+    } while (token);
+    return keys;
+  }
+
+  /** Multipart upload from a stream of unknown length. */
+  async uploadStream(key: string, body: Readable, contentType: string, cacheControl?: string) {
+    await new Upload({
+      client: this.s3,
+      params: {
+        Bucket: this.name,
+        Key: key,
+        Body: body,
         ContentType: contentType,
         CacheControl: cacheControl,
       },

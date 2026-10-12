@@ -3,6 +3,7 @@ import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
 import { setEpisodeStatus } from './commands/episode';
 import { importCommand } from './commands/import';
+import { migrateMedia } from './commands/migrate';
 import { publish } from './commands/publish';
 import { putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
 import { validate } from './commands/validate';
@@ -58,6 +59,13 @@ program
   .option('--out <dir>', 'output directory for --dry-run')
   .option('--force', 'overwrite an existing show')
   .action((url, o) => importCommand(url, o, g()));
+
+program
+  .command('migrate-media <slug>')
+  .description("Copy an imported show's media from the old host into your bucket")
+  .option('--dry-run', 'list what would be copied')
+  .option('--concurrency <n>', 'episodes copied at once', '3')
+  .action((slug, o) => migrateMedia(slug, o, g()));
 
 program
   .command('validate <fileOrUrl>')

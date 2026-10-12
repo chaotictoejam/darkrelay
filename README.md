@@ -124,7 +124,19 @@ Migration is three steps, and only the last one is visible to listeners.
    never declared one, derived from the **old** feed URL as the Podcasting 2.0 spec requires.
    Changing either makes apps show duplicates.
 
-2. **Migrate media** (next). Copies audio into your bucket and points the feed at your domain.
+2. **Migrate media** (available now). Copies audio, episode artwork, transcripts and chapters
+   from the old host into your bucket, then rebuilds the feed to point at the copies.
+
+   ```bash
+   pnpm darkrelay migrate-media my-show --dry-run   # list what would be copied
+   pnpm darkrelay migrate-media my-show
+   ```
+
+   Downloads follow redirects (such as Spotify's `anchor.fm/.../play/...` links) and stream
+   straight to S3. Each audio file's size is checked against the `length` in the feed; an episode
+   with a mismatch or a failed download keeps pointing at the old host. Re-run to retry: finished
+   episodes are skipped. Original URLs are kept in each manifest under `migratedFrom`. Behind an
+   HTTP proxy, set `NODE_USE_ENV_PROXY=1` so Node's `fetch` uses `HTTPS_PROXY`.
 
 3. **Cut over** (next). Go live, then set the old host to redirect its feed (301, and
    `<itunes:new-feed-url>` on the old feed). If the old feed is `<podcast:locked>yes`, unlock it
