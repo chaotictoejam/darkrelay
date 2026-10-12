@@ -1,7 +1,16 @@
 import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
+import {
+  CreateScheduleCommand,
+  DeleteScheduleCommand,
+  ResourceNotFoundException,
+  SchedulerClient,
+  UpdateScheduleCommand,
+  type CreateScheduleCommandInput,
+} from '@aws-sdk/client-scheduler';
+import type { Context } from 'aws-lambda';
 import type { EventBridgeEvent } from 'aws-lambda';
 import { S3Store } from '../lib/store';
-import type { PublisherDeps } from './feed';
+import { rebuildFeed, type PublisherDeps } from './feed';
 import { rebuildAll, routeObjectCreated } from './route';
 
 type S3ObjectCreated = EventBridgeEvent<
@@ -9,6 +18,8 @@ type S3ObjectCreated = EventBridgeEvent<
   { bucket: { name: string }; object: { key: string } }
 >;
 type Scheduled = EventBridgeEvent<'Scheduled Event', unknown>;
+/** Sent by the per-show one-shot schedule at the next release time. */
+type Release = { release: string };
 
 const env = (name: string) => {
   const v = process.env[name];
@@ -17,6 +28,40 @@ const env = (name: string) => {
 };
 
 const cloudfront = new CloudFrontClient({});
+const scheduler = new SchedulerClient({});
+let selfArn = '';
+
+/** Upserts the show's one-shot release schedule, or deletes it. */
+async function scheduleRelease(show: string, at: Date | undefined) {
+  const group = env('SCHEDULE_GROUP');
+  if (!at) {
+    await scheduler
+      .send(new DeleteScheduleCommand({ Name: show, GroupName: group }))
+      .catch((e: unknown) => {
+        if (!(e instanceof ResourceNotFoundException)) throw e;
+      });
+    return;
+  }
+  const input: CreateScheduleCommandInput = {
+    Name: show,
+    GroupName: group,
+    ScheduleExpression: `at(${at.toISOString().slice(0, 19)})`,
+    ScheduleExpressionTimezone: 'UTC',
+    FlexibleTimeWindow: { Mode: 'OFF' },
+    ActionAfterCompletion: 'DELETE',
+    Target: {
+      Arn: selfArn,
+      RoleArn: env('SCHEDULER_ROLE_ARN'),
+      Input: JSON.stringify({ release: show } satisfies Release),
+    },
+  };
+  try {
+    await scheduler.send(new UpdateScheduleCommand(input));
+  } catch (e) {
+    if (!(e instanceof ResourceNotFoundException)) throw e;
+    await scheduler.send(new CreateScheduleCommand(input));
+  }
+}
 const deps: PublisherDeps = {
   store: new S3Store(env('BUCKET_NAME')),
   baseUrl: env('PUBLIC_BASE_URL'),
@@ -39,11 +84,14 @@ const deps: PublisherDeps = {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   },
+  scheduleRelease,
   now: () => new Date(),
   log: (message, data) => console.log(JSON.stringify({ message, ...data })),
 };
 
-export async function handler(event: S3ObjectCreated | Scheduled) {
+export async function handler(event: S3ObjectCreated | Scheduled | Release, context: Context) {
+  selfArn = context.invokedFunctionArn.split(':').slice(0, 7).join(':');
+  if ('release' in event) return rebuildFeed(deps, event.release);
   if (event['detail-type'] === 'Scheduled Event') return rebuildAll(deps);
   return routeObjectCreated(deps, (event as S3ObjectCreated).detail.object.key);
 }

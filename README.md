@@ -25,8 +25,7 @@ darkrelay publish ──► S3 inbox/ ──(EventBridge)──► Publisher Lam
 - **Feeds are static files**, rebuilt on every publish. A feed that fails validation is never
   written: the last good one stays up and the errors are saved for `darkrelay status`.
 - **Several shows per deployment**, each at `https://<your-domain>/<show>/feed.xml`.
-- **Scheduled episodes**: a future `--pub-date` holds the episode; an hourly sweep adds it to the
-  feed once the time passes. Unchanged feeds are not rewritten.
+- **Scheduled releases**: publish ahead of time with a future `--pub-date`; see below.
 
 ## Deploy
 
@@ -91,6 +90,30 @@ pnpm darkrelay publish "Episode 12.mp3" --show my-show \
 pnpm darkrelay status my-show
 pnpm darkrelay validate https://media.example.com/my-show/feed.xml
 ```
+
+### Scheduled releases
+
+Upload an episode now and have it appear later:
+
+```bash
+pnpm darkrelay publish ep13.mp3 --show my-show --title "Episode 13" --notes notes.html \
+  --pub-date "2026-10-20 06:00"            # local time on this machine
+pnpm darkrelay episodes my-show            # live / scheduled / hidden, and the next release
+pnpm darkrelay episode reschedule my-show <guid> --pub-date "2026-10-21 06:00"
+pnpm darkrelay episode reschedule my-show <guid> --pub-date now     # release immediately
+```
+
+`--pub-date` takes `"YYYY-MM-DD HH:mm"` in your local time zone, ISO with a zone
+(`2026-10-20T10:00Z`, `2026-10-20T06:00-04:00`), or `now`. A bare date is refused, because it
+would silently mean midnight UTC.
+
+How it works: the episode is stored and its media uploaded right away, but it stays out of the feed
+until its time. Every feed rebuild sets a one-shot EventBridge Scheduler job for the show's next
+release (5 seconds after it), which rebuilds the feed, invalidates the CDN copy and pings Podcast
+Index. The hourly sweep is a backup if a schedule is ever missed. Before release, the media is only
+reachable by its unlisted URL, which appears nowhere until the feed lists it. Moving an
+already-released episode into the future would pull it from the feed, so `reschedule` asks for
+`--force`. Scheduler is free at this volume (14 million invocations a month).
 
 `publish` saves `<file>.episode.json` next to the audio. Publishing the same file again updates the
 episode instead of creating a new one. Run `pnpm darkrelay --help` for every command.

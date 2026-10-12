@@ -3,6 +3,7 @@ import {
   EpisodeManifest,
   ShowConfig,
   buildFeed,
+  nextRelease,
   feedUrl,
   layout,
   publicKey,
@@ -16,6 +17,12 @@ export interface PublisherDeps {
   baseUrl: string;
   invalidate(paths: string[]): Promise<void>;
   notifyPodcastIndex(feedUrl: string): Promise<void>;
+  /**
+   * Arranges a rebuild of this show at `at` (the next scheduled release), or
+   * cancels it when nothing is scheduled. Best effort: the hourly sweep is
+   * the fallback.
+   */
+  scheduleRelease(show: string, at: Date | undefined): Promise<void>;
   now(): Date;
   log(message: string, data?: Record<string, unknown>): void;
 }
@@ -26,6 +33,7 @@ export type RebuildResult =
   | { status: 'no-show' };
 
 export const FEED_CACHE_CONTROL = 'public, max-age=300';
+export const RELEASE_DELAY_MS = 5000;
 
 export async function loadShow(store: Store, slug: string): Promise<ShowConfig | undefined> {
   const raw = await store.getText(layout.showConfig(slug));
@@ -56,6 +64,11 @@ export async function rebuildFeed(deps: PublisherDeps, slug: string): Promise<Re
   if (!show) return { status: 'no-show' };
 
   const episodes = await loadEpisodes(deps, slug);
+  const next = show.status === 'live' ? nextRelease(episodes, deps.now()) : undefined;
+  // A few seconds late, so the release is unambiguously in the past when it fires.
+  await deps
+    .scheduleRelease(slug, next && new Date(next.getTime() + RELEASE_DELAY_MS))
+    .catch((e: unknown) => deps.log('Could not schedule release', { slug, error: String(e) }));
   const xml = buildFeed({ show, episodes, baseUrl: deps.baseUrl, now: deps.now() });
   const { errors, warnings } = validateFeed(xml);
   if (errors.length > 0) {

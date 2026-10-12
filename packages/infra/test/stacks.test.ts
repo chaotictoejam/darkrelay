@@ -18,6 +18,7 @@ function synth(input: DeploymentConfigInput) {
     mediaBucket: hosting.mediaBucket,
     distribution: hosting.distribution,
     publicBaseUrl: hosting.publicBaseUrl,
+    stackPrefix: config.stackPrefix,
   });
   const analytics = new AnalyticsStack(app, 'Analytics', {
     env,
@@ -167,6 +168,26 @@ describe('publisher', () => {
       }),
     });
     t.publish.hasResourceProperties('AWS::Events::Rule', { ScheduleExpression: 'rate(1 hour)' });
+  });
+});
+
+describe('scheduled releases', () => {
+  it('lets the publisher manage only its own schedule group, and the scheduler invoke only the publisher', () => {
+    t.publish.hasResourceProperties('AWS::Scheduler::ScheduleGroup', {
+      Name: 'DarkRelay-releases',
+    });
+    const policies = JSON.stringify(t.publish.findResources('AWS::IAM::Policy'));
+    expect(policies).toContain(':schedule/DarkRelay-releases/*');
+    expect(policies).toContain('iam:PassRole');
+    expect(policies).not.toMatch(/"scheduler:\*"|schedule\/\*"/);
+    t.publish.hasResourceProperties('AWS::IAM::Role', {
+      AssumeRolePolicyDocument: {
+        Statement: [Match.objectLike({ Principal: { Service: 'scheduler.amazonaws.com' } })],
+      },
+    });
+    t.publish.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: Match.objectLike({ SCHEDULE_GROUP: 'DarkRelay-releases' }) },
+    });
   });
 });
 

@@ -1,6 +1,7 @@
 import { layout, parseFeedXml, text, type ShowConfigInput } from '@darkrelay/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PublisherDeps } from '../src/publisher/feed';
+import { rebuildFeed } from '../src/publisher/feed';
 import { rebuildAll, routeObjectCreated } from '../src/publisher/route';
 import { MemoryStore } from './memory-store';
 
@@ -8,6 +9,7 @@ const BASE = 'https://media.example.com';
 let store: MemoryStore;
 let invalidations: string[][];
 let pings: string[];
+let schedules: Map<string, string | undefined>;
 let now: Date;
 let deps: PublisherDeps;
 
@@ -54,12 +56,14 @@ beforeEach(() => {
   store = new MemoryStore();
   invalidations = [];
   pings = [];
+  schedules = new Map();
   now = new Date('2026-10-11T12:00:00Z');
   deps = {
     store,
     baseUrl: BASE,
     invalidate: async (p) => void invalidations.push(p),
     notifyPodcastIndex: async (u) => void pings.push(u),
+    scheduleRelease: async (show, at) => void schedules.set(show, at?.toISOString()),
     now: () => now,
     log: () => {},
   };
@@ -201,5 +205,64 @@ describe('feed rebuilds', () => {
   it('ignores unrelated keys', async () => {
     expect(await routeObjectCreated(deps, 'inbox/show/b1/audio.mp3')).toBeUndefined();
     expect(await routeObjectCreated(deps, 'inbox/../x/episode.json')).toBeUndefined();
+  });
+});
+
+describe('scheduled releases', () => {
+  const future = (guid: string, pubDate: string) =>
+    upload(guid, { 'audio.mp3': 'x', 'episode.json': episodeJson({ guid, pubDate }) });
+
+  it('holds a future episode and schedules a rebuild just after its release time', async () => {
+    const result = await future('later', '2026-10-20T09:00:00Z');
+    expect(result).toMatchObject({ status: 'published', scheduledFor: '2026-10-20T09:00:00Z' });
+    expect(feedGuids()).toEqual([]);
+    expect(schedules.get('show')).toBe('2026-10-20T09:00:05.000Z');
+  });
+
+  it('schedules the earliest of several, and moves on to the next after each release', async () => {
+    await future('second', '2026-10-21T09:00:00Z');
+    await future('first', '2026-10-20T09:00:00Z');
+    expect(schedules.get('show')).toBe('2026-10-20T09:00:05.000Z');
+
+    now = new Date('2026-10-20T09:00:05Z'); // the schedule fires
+    expect(await rebuildFeed(deps, 'show')).toMatchObject({ status: 'written' });
+    expect(feedGuids()).toEqual(['first']);
+    expect(schedules.get('show')).toBe('2026-10-21T09:00:05.000Z');
+    expect(invalidations.at(-1)).toEqual(['/show/feed.xml']);
+    expect(pings.length).toBeGreaterThan(0);
+
+    now = new Date('2026-10-21T09:00:05Z');
+    await rebuildFeed(deps, 'show');
+    expect(feedGuids()).toEqual(['second', 'first']);
+    expect(schedules.get('show')).toBeUndefined();
+  });
+
+  it('does not publish or schedule early: a past-due episode appears, the future one waits', async () => {
+    await future('past', '2026-10-01T00:00:00Z');
+    await future('next', '2026-10-30T00:00:00Z');
+    expect(feedGuids()).toEqual(['past']);
+    expect(schedules.get('show')).toBe('2026-10-30T00:00:05.000Z');
+  });
+
+  it('ignores hidden episodes and draft shows', async () => {
+    await future('later', '2026-10-20T09:00:00Z');
+    const manifest = (await store.list(layout.episodesPrefix('show')))[0]!.key;
+    store.seed(manifest, JSON.stringify({ ...store.json(manifest), status: 'hidden' }));
+    await rebuildFeed(deps, 'show');
+    expect(schedules.get('show')).toBeUndefined();
+
+    store.seed(layout.showConfig('show'), JSON.stringify(showConfig({ status: 'draft' })));
+    await future('draft-later', '2026-10-20T09:00:00Z');
+    expect(schedules.get('show')).toBeUndefined();
+  });
+
+  it('a scheduler failure does not fail the publish; the hourly sweep still releases', async () => {
+    deps.scheduleRelease = async () => {
+      throw new Error('throttled');
+    };
+    expect(await future('later', '2026-10-20T09:00:00Z')).toMatchObject({ status: 'published' });
+    now = new Date('2026-10-20T10:00:00Z');
+    expect(await rebuildAll(deps)).toEqual({ show: 'written' });
+    expect(feedGuids()).toEqual(['later']);
   });
 });

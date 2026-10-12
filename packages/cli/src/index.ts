@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
-import { setEpisodeStatus } from './commands/episode';
+import { listEpisodes, rescheduleEpisode, setEpisodeStatus } from './commands/episode';
 import { addDashboardUser, checkAnalytics, runAnalytics } from './commands/analytics';
 import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
@@ -37,7 +37,10 @@ program
   .option('--title <title>')
   .option('--description <html>', 'show notes (HTML)')
   .option('--notes <file>', 'read show notes (HTML) from a file')
-  .option('--pub-date <iso>', 'release time; a future date schedules the episode')
+  .option(
+    '--pub-date <when>',
+    'release time: "YYYY-MM-DD HH:mm" (local), ISO with a zone, or "now". A future time schedules it.',
+  )
   .option('--season <n>')
   .option('--episode <n>')
   .addOption(new Option('--type <type>').choices(['full', 'trailer', 'bonus']))
@@ -93,7 +96,18 @@ program
   .description('Rebuild a show feed now')
   .action((slug) => requestRebuild(slug, g()));
 
+program
+  .command('episodes <slug>')
+  .description('List episodes: live, scheduled or hidden, and the next release')
+  .action((slug) => listEpisodes(slug, g()));
+
 const episode = program.command('episode').description('Manage episodes');
+episode
+  .command('reschedule <slug> <guid>')
+  .description('Change when an episode releases ("now" releases it immediately)')
+  .requiredOption('--pub-date <when>', '"YYYY-MM-DD HH:mm" (local), ISO with a zone, or "now"')
+  .option('--force', 'allow moving an already-released episode into the future')
+  .action((slug, guid, o) => rescheduleEpisode(slug, guid, o, g()));
 episode
   .command('hide <slug> <guid>')
   .description('Remove an episode from the feed')

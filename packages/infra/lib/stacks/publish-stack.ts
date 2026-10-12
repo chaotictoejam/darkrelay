@@ -5,6 +5,8 @@ import {
   aws_cloudfront as cloudfront,
   aws_events as events,
   aws_events_targets as eventTargets,
+  aws_iam as iam,
+  aws_scheduler as scheduler,
   aws_lambda_nodejs as nodejs,
   aws_s3 as s3,
 } from 'aws-cdk-lib';
@@ -15,6 +17,7 @@ export interface PublishStackProps extends StackProps {
   mediaBucket: s3.IBucket;
   distribution: cloudfront.IDistribution;
   publicBaseUrl: string;
+  stackPrefix: string;
 }
 
 /**
@@ -28,6 +31,16 @@ export class PublishStack extends Stack {
   constructor(scope: Construct, id: string, props: PublishStackProps) {
     super(scope, id, props);
 
+    // One-shot schedules, one per show, that rebuild the feed at the next release time.
+    const scheduleGroup = new scheduler.CfnScheduleGroup(this, 'Releases', {
+      name: `${props.stackPrefix}-releases`,
+    });
+    const schedulerRole = new iam.Role(this, 'ReleaseSchedulerRole', {
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
+        conditions: { StringEquals: { 'aws:SourceAccount': this.account } },
+      }),
+    });
+
     this.publisher = nodeFunction(this, 'Publisher', {
       entry: 'publisher/handler.ts',
       timeout: Duration.minutes(2),
@@ -35,8 +48,31 @@ export class PublishStack extends Stack {
         BUCKET_NAME: props.mediaBucket.bucketName,
         PUBLIC_BASE_URL: props.publicBaseUrl,
         DISTRIBUTION_ID: props.distribution.distributionId,
+        SCHEDULE_GROUP: scheduleGroup.name!,
+        SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
       },
     });
+    this.publisher.grantInvoke(schedulerRole);
+    this.publisher.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'scheduler:CreateSchedule',
+          'scheduler:UpdateSchedule',
+          'scheduler:DeleteSchedule',
+        ],
+        resources: [
+          this.formatArn({
+            service: 'scheduler',
+            resource: 'schedule',
+            resourceName: `${scheduleGroup.name}/*`,
+          }),
+        ],
+      }),
+    );
+    this.publisher.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['iam:PassRole'], resources: [schedulerRole.roleArn] }),
+    );
+    this.publisher.node.addDependency(scheduleGroup);
     props.mediaBucket.grantReadWrite(this.publisher);
     props.mediaBucket.grantDelete(this.publisher);
     props.distribution.grantCreateInvalidation(this.publisher);
@@ -61,7 +97,7 @@ export class PublishStack extends Stack {
       targets: [target],
     });
     new events.Rule(this, 'Hourly', {
-      description: 'Release scheduled episodes',
+      description: 'Backstop for scheduled releases if a one-shot schedule is missed',
       schedule: events.Schedule.rate(Duration.hours(1)),
       targets: [target],
     });

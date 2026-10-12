@@ -20,6 +20,8 @@ export type BundleStatus =
       episodeId: string;
       feed: RebuildResult['status'];
       feedErrors?: unknown;
+      /** Set when pubDate is in the future: the episode is held until then. */
+      scheduledFor?: string;
       ignoredFiles: string[];
     }
   | { status: 'rejected'; errors: string[] };
@@ -146,6 +148,8 @@ async function tryPublish(
     episodeId: id,
     feed: feed.status,
     feedErrors: feed.status === 'invalid' ? feed.errors : undefined,
+    scheduledFor:
+      Date.parse(manifest.pubDate) > deps.now().getTime() ? manifest.pubDate : undefined,
     ignoredFiles: ignored,
   };
 }

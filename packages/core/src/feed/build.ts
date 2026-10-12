@@ -24,6 +24,15 @@ export function feedEpisodes(episodes: EpisodeManifest[], now: Date): EpisodeMan
     .sort((a, b) => Date.parse(b.pubDate) - Date.parse(a.pubDate));
 }
 
+/** When the next scheduled episode goes out, if any. Hidden episodes never do. */
+export function nextRelease(episodes: EpisodeManifest[], now: Date): Date | undefined {
+  const future = episodes
+    .filter((e) => e.status === 'published')
+    .map((e) => Date.parse(e.pubDate))
+    .filter((t) => t > now.getTime());
+  return future.length ? new Date(Math.min(...future)) : undefined;
+}
+
 /**
  * Builds the RSS feed. Output is deterministic for the same input (no build
  * timestamp), so callers can skip rewriting and invalidating an unchanged feed.

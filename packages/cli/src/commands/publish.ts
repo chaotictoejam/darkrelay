@@ -11,6 +11,7 @@ import {
 } from '@darkrelay/core';
 import { z } from 'zod';
 import { Bucket, resolveDeployment, type GlobalOptions } from '../context';
+import { describeTime, parsePubDate } from '../dates';
 
 export interface PublishFlags {
   show: string;
@@ -98,7 +99,7 @@ export async function planBundle(
     guid: flags.guid ?? base.guid ?? newEpisodeGuid(),
     title: flags.title ?? base.title ?? '',
     description: description ?? '',
-    pubDate: flags.pubDate ? new Date(flags.pubDate).toISOString() : base.pubDate,
+    pubDate: flags.pubDate ? parsePubDate(flags.pubDate).toISOString() : base.pubDate,
     durationSeconds: duration === undefined ? 0 : Math.round(duration),
     episodeType: (flags.type as EpisodeInputRaw['episodeType']) ?? base.episodeType,
     season: flags.season ? Number(flags.season) : base.season,
@@ -144,8 +145,21 @@ export async function publish(target: string, flags: PublishFlags, global: Globa
     console.log('Still processing. Check later with: darkrelay status ' + flags.show);
     return;
   }
-  console.log(JSON.stringify(status, null, 2));
-  if (status['status'] !== 'published') process.exitCode = 1;
+  if (status['status'] !== 'published') {
+    console.log(JSON.stringify(status, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+  if (typeof status['scheduledFor'] === 'string') {
+    console.log(`Scheduled: releases ${describeTime(status['scheduledFor'])}.`);
+    console.log(
+      'It is not in the feed until then. See upcoming episodes with: darkrelay episodes ' +
+        flags.show,
+    );
+  } else {
+    console.log(`Published. Feed ${status['feed']}.`);
+  }
+  if (status['feedErrors']) console.log(JSON.stringify(status['feedErrors'], null, 2));
 }
 
 async function waitForStatus(bucket: Bucket, key: string, timeoutMs = 120_000) {

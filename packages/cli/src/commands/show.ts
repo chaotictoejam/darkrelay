@@ -7,12 +7,14 @@ import {
   contentTypeFor,
   feedUrl,
   layout,
+  nextRelease,
   podcastGuidFromFeedUrl,
   publicKey,
   type ShowConfigInput,
 } from '@darkrelay/core';
 import { z } from 'zod';
 import { Bucket, resolveDeployment, type GlobalOptions } from '../context';
+import { describeTime } from '../dates';
 
 export async function loadShow(bucket: Bucket, slug: string): Promise<ShowConfig | undefined> {
   const raw = await bucket.getText(layout.showConfig(slug));
@@ -105,6 +107,8 @@ export async function showStatus(slug: string, global: GlobalOptions) {
       ? `Feed: ${feedUrl(baseUrl, slug)}`
       : `Preview: s3://${name}/${layout.previewFeed(slug)}`,
   );
+  const next = nextRelease(await loadEpisodes(bucket, slug), new Date());
+  console.log(next ? `Next scheduled release: ${describeTime(next)}` : 'Nothing scheduled.');
   const errors = await bucket.getText(layout.feedErrors(slug));
   if (errors) {
     console.log('Last feed build FAILED validation; the previous feed is still being served:');
