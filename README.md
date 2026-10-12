@@ -29,13 +29,13 @@ darkrelay publish ──► S3 inbox/ ──(EventBridge)──► Publisher Lam
 
 ## Deploy
 
-Requirements: Node 22+, pnpm 10, AWS credentials for the target account, and the account
+Requirements: Node 22+ (npm comes with it), AWS credentials for the target account, and the account
 [bootstrapped for CDK](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html) in us-east-1.
 
 ```bash
-pnpm install
+npm install
 cp darkrelay.config.example.json darkrelay.config.json   # then edit it
-pnpm run deploy   # `pnpm deploy` is a built-in pnpm command, so use `run`
+npm run deploy
 ```
 
 Everything deploys to **us-east-1** (CloudFront certificates and log delivery must live there).
@@ -80,15 +80,15 @@ aws acm describe-certificate --region us-east-1 --certificate-arn <arn>   # show
 
 ```bash
 # Create a show (copy examples/show.example.json). New shows start as drafts.
-pnpm darkrelay show put my-show.json --image cover.jpg
-pnpm darkrelay show go-live my-show
+npx darkrelay show put my-show.json --image cover.jpg
+npx darkrelay show go-live my-show
 
 # Publish a DarkRoom MP3 export
-pnpm darkrelay publish "Episode 12.mp3" --show my-show \
+npx darkrelay publish "Episode 12.mp3" --show my-show \
   --title "Episode 12" --notes notes.html --season 2 --episode 12 --transcript ep12.vtt
 
-pnpm darkrelay status my-show
-pnpm darkrelay validate https://media.example.com/my-show/feed.xml
+npx darkrelay status my-show
+npx darkrelay validate https://media.example.com/my-show/feed.xml
 ```
 
 ### Scheduled releases
@@ -96,11 +96,11 @@ pnpm darkrelay validate https://media.example.com/my-show/feed.xml
 Upload an episode now and have it appear later:
 
 ```bash
-pnpm darkrelay publish ep13.mp3 --show my-show --title "Episode 13" --notes notes.html \
+npx darkrelay publish ep13.mp3 --show my-show --title "Episode 13" --notes notes.html \
   --pub-date "2026-10-20 06:00"            # local time on this machine
-pnpm darkrelay episodes my-show            # live / scheduled / hidden, and the next release
-pnpm darkrelay episode reschedule my-show <guid> --pub-date "2026-10-21 06:00"
-pnpm darkrelay episode reschedule my-show <guid> --pub-date now     # release immediately
+npx darkrelay episodes my-show            # live / scheduled / hidden, and the next release
+npx darkrelay episode reschedule my-show <guid> --pub-date "2026-10-21 06:00"
+npx darkrelay episode reschedule my-show <guid> --pub-date now     # release immediately
 ```
 
 `--pub-date` takes `"YYYY-MM-DD HH:mm"` in your local time zone, ISO with a zone
@@ -116,7 +116,7 @@ already-released episode into the future would pull it from the feed, so `resche
 `--force`. Scheduler is free at this volume (14 million invocations a month).
 
 `publish` saves `<file>.episode.json` next to the audio. Publishing the same file again updates the
-episode instead of creating a new one. Run `pnpm darkrelay --help` for every command.
+episode instead of creating a new one. Run `npx darkrelay --help` for every command.
 
 ### Episode bundles
 
@@ -139,8 +139,8 @@ Migration is three steps, and only the last one is visible to listeners.
    the old host; nothing public changes.
 
    ```bash
-   pnpm darkrelay import https://anchor.fm/s/xxxx/podcast/rss --show my-show --dry-run   # look first
-   pnpm darkrelay import https://anchor.fm/s/xxxx/podcast/rss --show my-show
+   npx darkrelay import https://anchor.fm/s/xxxx/podcast/rss --show my-show --dry-run   # look first
+   npx darkrelay import https://anchor.fm/s/xxxx/podcast/rss --show my-show
    ```
 
    Every episode `<guid>` is kept exactly. The show's `podcast:guid` is kept, or if the old feed
@@ -151,8 +151,8 @@ Migration is three steps, and only the last one is visible to listeners.
    from the old host into your bucket, then rebuilds the feed to point at the copies.
 
    ```bash
-   pnpm darkrelay migrate-media my-show --dry-run   # list what would be copied
-   pnpm darkrelay migrate-media my-show
+   npx darkrelay migrate-media my-show --dry-run   # list what would be copied
+   npx darkrelay migrate-media my-show
    ```
 
    Downloads follow redirects (such as Spotify's `anchor.fm/.../play/...` links) and stream
@@ -164,9 +164,9 @@ Migration is three steps, and only the last one is visible to listeners.
 3. **Cut over** (available now).
 
    ```bash
-   pnpm darkrelay cutover my-show          # preflight only: changes nothing
-   pnpm darkrelay cutover my-show --go     # make the feed public, verify it, ping Podcast Index
-   pnpm darkrelay cutover my-show --check-redirect
+   npx darkrelay cutover my-show          # preflight only: changes nothing
+   npx darkrelay cutover my-show --go     # make the feed public, verify it, ping Podcast Index
+   npx darkrelay cutover my-show --check-redirect
    ```
 
    The preflight blocks on media still on the old host, a locked source feed, a new feed that
@@ -187,8 +187,8 @@ Each show chooses how it treats video with `video.hls` in its show file:
 A video-only upload on an audio-first show still works: the audio is extracted, no HLS is built.
 
 ```bash
-pnpm darkrelay publish "HCU 04.mp4" --show her-career-unplugged --title "..." --notes notes.html
-pnpm darkrelay bundle her-career-unplugged <bundleId>   # check on it later
+npx darkrelay publish "HCU 04.mp4" --show her-career-unplugged --title "..." --notes notes.html
+npx darkrelay bundle her-career-unplugged <bundleId>   # check on it later
 ```
 
 How it runs: the publisher starts one Fargate Spot task per upload (4 vCPU, 8 GB, 60 GB scratch;
@@ -231,10 +231,10 @@ Each nightly run covers yesterday and the day before (CloudFront logs can arrive
 a day overwrites it, so counts never double.
 
 ```bash
-pnpm darkrelay analytics check                     # after the first deploy: are logs readable?
-pnpm darkrelay analytics run                       # count yesterday now
-pnpm darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 90 days)
-pnpm darkrelay dashboard add-user you@example.com  # Cognito emails a temporary password
+npx darkrelay analytics check                     # after the first deploy: are logs readable?
+npx darkrelay analytics run                       # count yesterday now
+npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 90 days)
+npx darkrelay dashboard add-user you@example.com  # Cognito emails a temporary password
 ```
 
 **Adding a data source** (YouTube, CSV imports, prefix redirects) means writing daily items in the
@@ -278,10 +278,10 @@ Traffic is the only thing that can make the bill grow fast, so `alerts` in
 ## Development
 
 ```bash
-pnpm test          # all packages
-pnpm typecheck
-pnpm format
-pnpm synth         # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
+npm test             # all packages
+npm run typecheck
+npm run format
+npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 ```
 
 | Package              | What                                                                          |

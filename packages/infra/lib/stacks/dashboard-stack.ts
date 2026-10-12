@@ -129,7 +129,7 @@ export class DashboardStack extends Stack {
           ? s3deploy.Source.asset(DIST)
           : s3deploy.Source.data(
               'index.html',
-              '<!doctype html><title>DarkRelay</title><p>Dashboard not built. Run <code>pnpm build:dashboard</code> and deploy again.</p>',
+              '<!doctype html><title>DarkRelay</title><p>Dashboard not built. Run <code>npm run build:dashboard</code> and deploy again.</p>',
             ),
         s3deploy.Source.jsonData('config.json', runtimeConfig),
       ],

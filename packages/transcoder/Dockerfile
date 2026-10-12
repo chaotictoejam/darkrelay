@@ -1,14 +1,18 @@
 # Build context: the repository root (see TranscoderStack).
 FROM node:22.22.0-bookworm-slim AS build
 WORKDIR /repo
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
+# Every workspace manifest, so npm ci can check the lockfile; only two get installed.
+COPY packages/cli/package.json packages/cli/
 COPY packages/core/package.json packages/core/
+COPY packages/dashboard/package.json packages/dashboard/
+COPY packages/functions/package.json packages/functions/
+COPY packages/infra/package.json packages/infra/
 COPY packages/transcoder/package.json packages/transcoder/
-RUN pnpm install --frozen-lockfile --filter @darkrelay/transcoder...
+RUN npm ci --workspace @darkrelay/transcoder --workspace @darkrelay/core --include-workspace-root=false
 COPY packages/core packages/core
 COPY packages/transcoder packages/transcoder
-RUN pnpm --filter @darkrelay/transcoder build
+RUN npm run build --workspace @darkrelay/transcoder
 
 FROM node:22.22.0-bookworm-slim
 # Debian's ffmpeg includes libx264, libmp3lame and the native AAC encoder.

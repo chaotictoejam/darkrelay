@@ -1,4 +1,3 @@
-#!/usr/bin/env -S npx tsx
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
 import { listEpisodes, rescheduleEpisode, setEpisodeStatus } from './commands/episode';

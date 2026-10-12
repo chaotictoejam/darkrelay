@@ -2,19 +2,21 @@
   "name": "darkrelay",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.28.0",
+  "workspaces": [
+    "packages/*"
+  ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "npm": ">=10"
   },
   "scripts": {
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "synth": "pnpm --filter @darkrelay/infra synth",
-    "deploy": "pnpm build:dashboard && pnpm --filter @darkrelay/infra exec cdk deploy --all",
-    "darkrelay": "tsx packages/cli/src/index.ts",
+    "build:dashboard": "npm run build -w @darkrelay/dashboard",
+    "synth": "npm run synth -w @darkrelay/infra",
+    "deploy": "npm run build:dashboard && npm exec -w @darkrelay/infra -- cdk deploy --all",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "build:dashboard": "pnpm --filter @darkrelay/dashboard build"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@types/node": "22.20.5",
@@ -22,5 +24,8 @@
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
+  },
+  "overrides": {
+    "vite": "7.3.7"
   }
 }

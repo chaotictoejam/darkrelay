@@ -22,7 +22,7 @@ export function nodeFunction(scope: Construct, id: string, props: NodeFunctionPr
   return new nodejs.NodejsFunction(scope, id, {
     entry: resolve(REPO_ROOT, 'packages/functions/src', props.entry),
     projectRoot: REPO_ROOT,
-    depsLockFilePath: resolve(REPO_ROOT, 'pnpm-lock.yaml'),
+    depsLockFilePath: resolve(REPO_ROOT, 'package-lock.json'),
     runtime: lambda.Runtime.NODEJS_22_X,
     architecture: lambda.Architecture.ARM_64,
     memorySize: props.memorySize ?? 512,
