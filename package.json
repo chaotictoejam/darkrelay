@@ -10,10 +10,11 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "synth": "pnpm --filter @darkrelay/infra synth",
-    "deploy": "pnpm --filter @darkrelay/infra exec cdk deploy --all",
+    "deploy": "pnpm build:dashboard && pnpm --filter @darkrelay/infra exec cdk deploy --all",
     "darkrelay": "tsx packages/cli/src/index.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "build:dashboard": "pnpm --filter @darkrelay/dashboard build"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

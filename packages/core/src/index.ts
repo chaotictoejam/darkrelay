@@ -7,3 +7,7 @@ export * from './feed/build';
 export * from './feed/import';
 export * from './feed/parse';
 export * from './feed/validate';
+export * from './analytics/logs';
+export * from './analytics/counting';
+export * from './analytics/metrics';
+export * from './analytics/useragent';

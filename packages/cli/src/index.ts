@@ -2,6 +2,7 @@
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
 import { setEpisodeStatus } from './commands/episode';
+import { addDashboardUser, checkAnalytics, runAnalytics } from './commands/analytics';
 import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
@@ -101,6 +102,26 @@ episode
   .command('unhide <slug> <guid>')
   .description('Put a hidden episode back in the feed')
   .action((slug, guid) => setEpisodeStatus(slug, guid, 'published', g()));
+
+const analytics = program.command('analytics').description('Download analytics');
+analytics
+  .command('run')
+  .description('Count downloads now (default: yesterday). Re-running a day is safe.')
+  .option('--date <date...>', 'specific UTC days, YYYY-MM-DD')
+  .option('--from <date>', 'first day of a range')
+  .option('--to <date>', 'last day of a range (default: yesterday)')
+  .action((o) => runAnalytics(o, g()));
+analytics
+  .command('check')
+  .description('Check that CloudFront logs are landing and Athena can read them')
+  .action(() => checkAnalytics(g()));
+
+program
+  .command('dashboard')
+  .description('Dashboard access')
+  .command('add-user <email>')
+  .description('Invite someone to the dashboard (Cognito emails a temporary password)')
+  .action((email) => addDashboardUser(email, g()));
 
 program.parseAsync().catch((e: unknown) => {
   console.error(e instanceof Error ? e.message : e);

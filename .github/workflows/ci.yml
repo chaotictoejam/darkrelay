@@ -27,6 +27,7 @@ jobs:
           pnpm -s darkrelay import https://anchor.fm/s/abc123/podcast/rss --show example \
             --file packages/core/test/fixtures/anchor-style.xml --dry-run --out /tmp/import
           pnpm -s darkrelay validate /tmp/import/feed.preview.xml
+      - run: pnpm build:dashboard
       - name: CDK synth
         env:
           CDK_DEFAULT_ACCOUNT: '123456789012'

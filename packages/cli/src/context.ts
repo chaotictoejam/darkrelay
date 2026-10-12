@@ -45,6 +45,19 @@ export async function resolveDeployment(opts: GlobalOptions): Promise<Deployment
   return { bucket: outputs['MediaBucketName'], baseUrl: outputs['PublicBaseUrl'] };
 }
 
+/** Outputs of one of the deployment's stacks, e.g. stackOutputs(opts, 'Analytics'). */
+export async function stackOutputs(
+  opts: GlobalOptions,
+  stack: string,
+): Promise<Record<string, string>> {
+  const stackName = `${opts.stackPrefix}${stack}`;
+  const cfn = new CloudFormationClient({ region: 'us-east-1' });
+  const r = await cfn.send(new DescribeStacksCommand({ StackName: stackName }));
+  return Object.fromEntries(
+    (r.Stacks?.[0]?.Outputs ?? []).map((o) => [o.OutputKey ?? '', o.OutputValue ?? '']),
+  );
+}
+
 export class Bucket {
   private readonly s3 = new S3Client({ region: 'us-east-1' });
   constructor(readonly name: string) {}

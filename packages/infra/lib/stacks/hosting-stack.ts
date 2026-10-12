@@ -13,6 +13,7 @@ import {
   aws_route53_targets as targets,
   aws_s3 as s3,
 } from 'aws-cdk-lib';
+import { ACCESS_LOG_FIELDS, ACCESS_LOG_PREFIX, ACCESS_LOG_SUFFIX } from '@darkrelay/core';
 import type { Construct } from 'constructs';
 import type { DeploymentConfig } from '../config';
 
@@ -56,7 +57,10 @@ export class HostingStack extends Stack {
       objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
       removalPolicy: RemovalPolicy.RETAIN,
       // Raw logs hold IP addresses; only aggregates are kept long term.
-      lifecycleRules: [{ expiration: Duration.days(config.logs.retentionDays) }],
+      lifecycleRules: [
+        { expiration: Duration.days(config.logs.retentionDays) },
+        { prefix: 'athena-results/', expiration: Duration.days(7) },
+      ],
     });
 
     const domain = this.domain(config);
@@ -151,20 +155,26 @@ export class HostingStack extends Stack {
   }
 
   /**
-   * CloudFront standard logging (v2) to S3 as Parquet, partitioned by hour.
-   * Billed as CloudWatch vended logs: about $0.25/GB delivered plus about
-   * $0.035/GB for Parquet. Cents per month at personal scale.
+   * CloudFront standard logging (v2) to S3 as Parquet, partitioned by hour
+   * (see ACCESS_LOG_PREFIX in core for the exact path). Billed as CloudWatch
+   * vended logs: about $0.25/GB delivered plus about $0.035/GB for Parquet.
+   * Cents per month at personal scale.
    */
   private accessLogs(config: DeploymentConfig) {
     const name = `${config.stackPrefix}-cdn-access`;
+    // A prefix on the destination stops CloudFront adding AWSLogs/<account>/CloudFront/.
+    const prefixArn = `${this.logBucket.bucketArn}/${ACCESS_LOG_PREFIX}`;
     this.logBucket.addToResourcePolicy(
       new iam.PolicyStatement({
         sid: 'AllowCloudWatchLogDelivery',
         principals: [new iam.ServicePrincipal('delivery.logs.amazonaws.com')],
         actions: ['s3:PutObject'],
-        resources: [this.logBucket.arnForObjects('*')],
+        resources: [`${prefixArn}/*`],
         conditions: {
-          StringEquals: { 'aws:SourceAccount': this.account },
+          StringEquals: {
+            's3:x-amz-acl': 'bucket-owner-full-control',
+            'aws:SourceAccount': this.account,
+          },
           ArnLike: {
             'aws:SourceArn': `arn:aws:logs:${this.region}:${this.account}:delivery-source:*`,
           },
@@ -178,16 +188,17 @@ export class HostingStack extends Stack {
     });
     const destination = new logs.CfnDeliveryDestination(this, 'AccessLogDestination', {
       name,
-      destinationResourceArn: this.logBucket.bucketArn,
+      destinationResourceArn: prefixArn,
       outputFormat: 'parquet',
     });
     destination.node.addDependency(this.logBucket.policy!);
     const delivery = new logs.CfnDelivery(this, 'AccessLogDelivery', {
       deliverySourceName: source.name,
       deliveryDestinationArn: destination.attrArn,
+      recordFields: [...ACCESS_LOG_FIELDS],
       s3EnableHiveCompatiblePath: true,
-      s3SuffixPath: 'cloudfront/{DistributionId}/{yyyy}/{MM}/{dd}/{HH}',
+      s3SuffixPath: ACCESS_LOG_SUFFIX,
     });
-    delivery.addDependency(source);
+    delivery.addResourceDependency(source);
   }
 }

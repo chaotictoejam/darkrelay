@@ -8,6 +8,7 @@
     "synth": "cdk synth --quiet"
   },
   "dependencies": {
+    "@darkrelay/core": "workspace:*",
     "aws-cdk-lib": "2.273.0",
     "constructs": "10.8.1",
     "zod": "4.6.6"

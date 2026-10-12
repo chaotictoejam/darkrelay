@@ -7,8 +7,8 @@ publishes and measures.
 One upload in. An RSS feed (iTunes and Podcasting 2.0 tags) out, served from your own AWS account,
 with your own download logs.
 
-**Status:** phase 1 (hosting, feeds, import). Analytics, video, YouTube and prefix mode come next;
-see [Roadmap](#roadmap).
+**Status:** phases 1 and 2 (hosting, feeds, import and migration, download analytics, dashboard).
+Video, YouTube and prefix mode come next; see [Roadmap](#roadmap).
 
 ## How it works
 
@@ -152,6 +152,43 @@ Migration is three steps, and only the last one is visible to listeners.
    account for a few weeks. `--check-redirect` confirms the old feed answers with a 301 or an
    `<itunes:new-feed-url>` pointing at yours.
 
+## Analytics
+
+Downloads are counted once a night from CloudFront's own logs, so nothing extra runs when someone
+downloads an episode.
+
+```
+CloudFront logs (Parquet, hourly) ─► S3 ─► Athena, 03:20 UTC ─► aggregator Lambda ─► DynamoDB ◄── dashboard API ◄── dashboard
+```
+
+**How a download is counted** (IAB v2.2 style):
+
+- Only `GET` requests for episode audio with status 200 or 206.
+- Requests are grouped by file + IP address + User-Agent per UTC day, with byte ranges summed. A
+  group counts once, and only if it fetched at least one minute of audio (the file's bitrate times
+  60 s, or the whole file if shorter). Apple's 2-byte probe requests never count.
+- Bots are removed using the [OPAWG user-agent lists](https://github.com/opawg/user-agents-v2)
+  (vendored at a pinned commit; refresh with `node scripts/update-opawg.mjs <commit>`). Apps and
+  devices come from the same lists.
+- Self-hosted servers (audiobookshelf, Pinepods, Podgrab, Podcast Archiver) download on a schedule,
+  not when someone listens. They are counted separately as "downloads, not listens".
+- Country comes from CloudFront's `c-country` log field. IP addresses are grouped on inside Athena
+  and never leave it.
+
+Each nightly run covers yesterday and the day before (CloudFront logs can arrive late). Re-running
+a day overwrites it, so counts never double.
+
+```bash
+pnpm darkrelay analytics check                     # after the first deploy: are logs readable?
+pnpm darkrelay analytics run                       # count yesterday now
+pnpm darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 90 days)
+pnpm darkrelay dashboard add-user you@example.com  # Cognito emails a temporary password
+```
+
+**Adding a data source** (YouTube, CSV imports, prefix redirects) means writing daily items in the
+shape defined in `packages/core/src/analytics/metrics.ts` with a new `source`. The dashboard sums
+all sources and needs no changes.
+
 ## Cost
 
 Personal scale (a few shows, a few thousand downloads a month) runs about **$1-4/month**:
@@ -160,7 +197,11 @@ Personal scale (a few shows, a few thousand downloads a month) runs about **$1-4
 - S3 storage: about $0.023/GB-month (100 one-hour MP3 episodes is about 6 GB)
 - CloudFront: the first 1 TB/month of transfer is free
 - Access logs: about $0.25/GB delivered plus $0.035/GB for Parquet. Cents per month.
-- Lambda, EventBridge, CloudWatch Logs: within the free tier at this volume
+- Lambda, EventBridge, CloudWatch Logs, Cognito (Lite, under 10,000 users), API Gateway (HTTP API):
+  within the free tier at this volume
+- Athena: $5/TB scanned with a 10 MB minimum per query, so about $0.0001 a night. The workgroup
+  refuses any query over 1 GB.
+- DynamoDB on-demand with point-in-time recovery: pennies a month
 
 No NAT gateways, OpenSearch, QuickSight, Kinesis or CloudFront real-time logs, by design.
 
@@ -192,8 +233,8 @@ pnpm synth         # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 
 ## Roadmap
 
-1. **Hosting core and feed import** (this release)
-2. Download analytics (IAB-style counting from CloudFront logs) and a dashboard
+1. **Hosting core and feed import** (done)
+2. **Download analytics and dashboard** (done)
 3. Video: ffmpeg on Fargate Spot to HLS, plus audio extraction
 4. YouTube upload and analytics
 5. HLS retention curves

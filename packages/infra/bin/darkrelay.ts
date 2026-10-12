@@ -1,5 +1,7 @@
 import { App } from 'aws-cdk-lib';
 import { loadConfig } from '../lib/config';
+import { AnalyticsStack } from '../lib/stacks/analytics-stack';
+import { DashboardStack } from '../lib/stacks/dashboard-stack';
 import { HostingStack } from '../lib/stacks/hosting-stack';
 import { PublishStack } from '../lib/stacks/publish-stack';
 
@@ -15,3 +17,11 @@ new PublishStack(app, `${config.stackPrefix}Publish`, {
   distribution: hosting.distribution,
   publicBaseUrl: hosting.publicBaseUrl,
 });
+const analytics = new AnalyticsStack(app, `${config.stackPrefix}Analytics`, {
+  env,
+  config,
+  logBucket: hosting.logBucket,
+  mediaBucket: hosting.mediaBucket,
+  distribution: hosting.distribution,
+});
+new DashboardStack(app, `${config.stackPrefix}Dashboard`, { env, config, table: analytics.table });

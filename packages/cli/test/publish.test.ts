@@ -95,3 +95,16 @@ describe('newBundleId', () => {
     expect(newBundleId(new Date('2026-10-11T12:34:56Z'))).toMatch(/^20261011123456-[0-9a-f]{6}$/);
   });
 });
+
+describe('analytics dates', async () => {
+  const { datesFor } = await import('../src/commands/analytics');
+  const now = new Date('2026-10-12T05:00:00Z');
+  it('defaults to yesterday', () => expect(datesFor({}, now)).toEqual(['2026-10-11']));
+  it('expands a range up to yesterday', () =>
+    expect(datesFor({ from: '2026-10-09' }, now)).toEqual([
+      '2026-10-09',
+      '2026-10-10',
+      '2026-10-11',
+    ]));
+  it('rejects bad dates', () => expect(() => datesFor({ date: ['10/11/2026'] }, now)).toThrow());
+});
