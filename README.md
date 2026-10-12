@@ -138,9 +138,19 @@ Migration is three steps, and only the last one is visible to listeners.
    episodes are skipped. Original URLs are kept in each manifest under `migratedFrom`. Behind an
    HTTP proxy, set `NODE_USE_ENV_PROXY=1` so Node's `fetch` uses `HTTPS_PROXY`.
 
-3. **Cut over** (next). Go live, then set the old host to redirect its feed (301, and
-   `<itunes:new-feed-url>` on the old feed). If the old feed is `<podcast:locked>yes`, unlock it
-   at the old host first.
+3. **Cut over** (available now).
+
+   ```bash
+   pnpm darkrelay cutover my-show          # preflight only: changes nothing
+   pnpm darkrelay cutover my-show --go     # make the feed public, verify it, ping Podcast Index
+   pnpm darkrelay cutover my-show --check-redirect
+   ```
+
+   The preflight blocks on media still on the old host, a locked source feed, a new feed that
+   fails validation, a changed `podcast:guid`, or any old episode GUID missing from the new feed.
+   After `--go`, set the old host to redirect its feed (301) to the new URL and keep the old
+   account for a few weeks. `--check-redirect` confirms the old feed answers with a 301 or an
+   `<itunes:new-feed-url>` pointing at yours.
 
 ## Cost
 

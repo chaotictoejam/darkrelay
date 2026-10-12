@@ -10,7 +10,7 @@ import {
   type AssetRef,
 } from '@darkrelay/core';
 import { Bucket, resolveDeployment, type GlobalOptions } from '../context';
-import { loadShow } from './show';
+import { loadEpisodes, loadShow } from './show';
 
 export interface Fetched {
   body: Readable;
@@ -189,11 +189,7 @@ export async function migrateMedia(
   const show = await loadShow(bucket, slug);
   if (!show) throw new Error(`Show "${slug}" does not exist`);
 
-  const manifests: EpisodeManifest[] = [];
-  for (const key of await bucket.list(layout.episodesPrefix(slug))) {
-    if (!key.endsWith('.json')) continue;
-    manifests.push(EpisodeManifest.parse(JSON.parse((await bucket.getText(key))!)));
-  }
+  const manifests = await loadEpisodes(bucket, slug);
   const pending = manifests
     .map((m) => ({ m, jobs: remoteAssets(m) }))
     .filter((p) => p.jobs.length > 0)

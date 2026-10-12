@@ -2,6 +2,7 @@
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
 import { setEpisodeStatus } from './commands/episode';
+import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
 import { publish } from './commands/publish';
@@ -66,6 +67,15 @@ program
   .option('--dry-run', 'list what would be copied')
   .option('--concurrency <n>', 'episodes copied at once', '3')
   .action((slug, o) => migrateMedia(slug, o, g()));
+
+program
+  .command('cutover <slug>')
+  .description('Check, then make an imported show live and verify the public feed')
+  .option('--go', 'make the show live (without it, only the checks run)')
+  .option('--no-ping', "don't notify Podcast Index")
+  .option('--allow-remote-media', 'go live while some media is still on the old host')
+  .option('--check-redirect', 'check whether the old feed redirects to the new one')
+  .action((slug, o) => cutover(slug, o, g()));
 
 program
   .command('validate <fileOrUrl>')

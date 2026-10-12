@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import {
+  EpisodeManifest,
   ShowConfig,
   contentTypeFor,
   feedUrl,
@@ -16,6 +17,15 @@ import { Bucket, resolveDeployment, type GlobalOptions } from '../context';
 export async function loadShow(bucket: Bucket, slug: string): Promise<ShowConfig | undefined> {
   const raw = await bucket.getText(layout.showConfig(slug));
   return raw ? ShowConfig.parse(JSON.parse(raw)) : undefined;
+}
+
+export async function loadEpisodes(bucket: Bucket, slug: string): Promise<EpisodeManifest[]> {
+  const episodes: EpisodeManifest[] = [];
+  for (const key of await bucket.list(layout.episodesPrefix(slug))) {
+    if (!key.endsWith('.json')) continue;
+    episodes.push(EpisodeManifest.parse(JSON.parse((await bucket.getText(key))!)));
+  }
+  return episodes;
 }
 
 /**
