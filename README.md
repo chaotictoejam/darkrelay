@@ -38,6 +38,16 @@ cp darkrelay.config.example.json darkrelay.config.json   # then edit it
 npm run deploy
 ```
 
+For stacks that add IAM roles or policies, CDK asks "Do you wish to deploy these changes (y/n)?"
+and waits. The transcoder image build prints a lot at the same time, so the question is easily
+lost and the deploy looks stuck; type `y` and press Enter. To avoid the prompts, review the changes
+first, then deploy without approval:
+
+```bash
+npm exec -w @darkrelay/infra -- cdk diff
+npm run deploy -- --require-approval never
+```
+
 Everything deploys to **us-east-1** (CloudFront certificates and log delivery must live there).
 
 ### Config (`darkrelay.config.json`)
@@ -53,7 +63,13 @@ Everything deploys to **us-east-1** (CloudFront certificates and log delivery mu
 are created for you):
 
 ```json
-{ "domain": { "dns": "route53", "name": "media.example.com", "hostedZoneName": "example.com" } }
+{
+  "domain": {
+    "dns": "route53",
+    "name": "media.example.com",
+    "hostedZoneName": "example.com"
+  }
+}
 ```
 
 Add `"hostedZoneId"` to skip the zone lookup at synth time.
@@ -198,8 +214,10 @@ audio and HLS, then `processed.json`, which resumes publishing. If Spot reclaims
 publisher retries once on regular Fargate; a second failure rejects the bundle with the reason.
 Uploads over 5 GB are copied with multipart copy.
 
-`cdk deploy` builds the transcoder image (Debian's ffmpeg, about 1 GB) with Docker, so Docker must
-be running on the machine you deploy from.
+`cdk deploy` builds the transcoder image (Debian's ffmpeg, about 1 GB), so the machine you deploy
+from needs Docker or Podman. For Podman, set `CDK_DOCKER=podman` (e.g.
+`CDK_DOCKER=podman npm run deploy`). Nothing else needs a container build: the Lambdas are
+bundled with the local esbuild.
 
 Apps that support `alternateEnclosure` (Fountain, Podverse and a few others) offer the video. Apple
 Podcasts and Spotify ignore it and play the audio.
