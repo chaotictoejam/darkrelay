@@ -1,7 +1,12 @@
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
 import { listEpisodes, rescheduleEpisode, setEpisodeStatus } from './commands/episode';
-import { addDashboardUser, checkAnalytics, runAnalytics } from './commands/analytics';
+import {
+  addDashboardUser,
+  checkAnalytics,
+  removeDashboardUser,
+  runAnalytics,
+} from './commands/analytics';
 import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
@@ -134,12 +139,15 @@ analytics
   .description('Check that CloudFront logs are landing and Athena can read them')
   .action(() => checkAnalytics(g()));
 
-program
-  .command('dashboard')
-  .description('Dashboard access')
+const dashboard = program.command('dashboard').description('Dashboard access');
+dashboard
   .command('add-user <email>')
   .description('Invite someone to the dashboard (Cognito emails a temporary password)')
   .action((email) => addDashboardUser(email, g()));
+dashboard
+  .command('remove-user <email>')
+  .description('Remove someone from the dashboard')
+  .action((email) => removeDashboardUser(email, g()));
 
 program.parseAsync().catch((e: unknown) => {
   console.error(e instanceof Error ? e.message : e);

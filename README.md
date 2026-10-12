@@ -253,6 +253,7 @@ npx darkrelay analytics check                     # after the first deploy: are 
 npx darkrelay analytics run                       # count yesterday now
 npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 90 days)
 npx darkrelay dashboard add-user you@example.com  # Cognito emails a temporary password
+npx darkrelay dashboard remove-user you@example.com
 ```
 
 **Adding a data source** (YouTube, CSV imports, prefix redirects) means writing daily items in the
