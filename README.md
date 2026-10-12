@@ -38,6 +38,16 @@ cp darkrelay.config.example.json darkrelay.config.json   # then edit it
 npm run deploy
 ```
 
+For stacks that add IAM roles or policies, CDK asks "Do you wish to deploy these changes (y/n)?"
+and waits. The transcoder image build prints a lot at the same time, so the question is easily
+lost and the deploy looks stuck; type `y` and press Enter. To avoid the prompts, review the changes
+first, then deploy without approval:
+
+```bash
+npm exec -w @darkrelay/infra -- cdk diff
+npm run deploy -- --require-approval never
+```
+
 Everything deploys to **us-east-1** (CloudFront certificates and log delivery must live there).
 
 ### Config (`darkrelay.config.json`)
