@@ -148,7 +148,7 @@ yt.command('link <slug> <guid> <video>')
   .description('Link an episode to a video already on YouTube (id or URL)')
   .action((slug, guid, video) => youtube.link(slug, guid, video, g()));
 yt.command('match <slug>')
-  .description('Find existing channel uploads for episodes by title')
+  .description('Find existing channel uploads for episodes by title or description')
   .option('--apply', 'link the matches')
   .action((slug, o) => youtube.match(slug, o, g()));
 yt.command('upload <slug> <guid>')

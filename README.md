@@ -200,7 +200,7 @@ Each show can upload its episode videos to a YouTube channel and pull views, wat
 **Episodes already on YouTube:** link them, then backfill their analytics.
 
 ```bash
-npx darkrelay youtube match my-show           # pairs episodes and uploads by title
+npx darkrelay youtube match my-show           # pairs episodes and uploads by title, or by the episode title in the description
 npx darkrelay youtube match my-show --apply
 npx darkrelay youtube link my-show <guid> https://youtu.be/<id>   # one at a time
 npx darkrelay analytics run --source youtube --from 2026-04-01

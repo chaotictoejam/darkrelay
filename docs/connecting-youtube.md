@@ -68,7 +68,7 @@ Preview the matches first. This changes nothing:
 npx darkrelay youtube match <show>
 ```
 
-It pairs each episode with the channel upload of the same title, ignoring case and punctuation. Each line is `match <title> -> <video>` or `none <title>`. An episode shows `none` when no upload has its title, or when several do (it won't guess). Then link the matches:
+It pairs each episode with the channel upload of the same title, ignoring case and punctuation. If your videos have their own YouTube titles, it then looks for the episode title in each video's description instead; those matches are marked `(named in description)`. Each line is `match <title> -> <video>` or `none <title>`. An episode shows `none` when no video names it, or when it can't tell which one does: two videos name it, or one video names two episodes (a "previously on" line, say). It won't guess. Then link the matches:
 
 ```bash
 npx darkrelay youtube match <show> --apply
