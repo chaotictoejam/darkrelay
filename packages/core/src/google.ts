@@ -223,8 +223,8 @@ export class YouTube {
   /** Every video in the channel's uploads playlist, newest first. */
   async listUploads(
     uploadsPlaylist: string,
-  ): Promise<{ videoId: string; title: string; publishedAt: string }[]> {
-    const out: { videoId: string; title: string; publishedAt: string }[] = [];
+  ): Promise<{ videoId: string; title: string; description: string; publishedAt: string }[]> {
+    const out: { videoId: string; title: string; description: string; publishedAt: string }[] = [];
     let pageToken: string | undefined;
     do {
       const url = new URL(`${this.endpoints.api}/youtube/v3/playlistItems`);
@@ -237,7 +237,7 @@ export class YouTube {
       const r = await this.json<{
         nextPageToken?: string;
         items?: {
-          snippet: { title: string };
+          snippet: { title: string; description?: string };
           contentDetails: { videoId: string; videoPublishedAt?: string };
         }[];
       }>(url.toString(), {}, 'Listing uploads');
@@ -245,6 +245,7 @@ export class YouTube {
         out.push({
           videoId: i.contentDetails.videoId,
           title: i.snippet.title,
+          description: i.snippet.description ?? '',
           publishedAt: i.contentDetails.videoPublishedAt ?? '',
         });
       }

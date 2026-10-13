@@ -10,6 +10,7 @@ The code and full setup instructions are on [GitHub](https://github.com/chaotict
 
 - [Moving a podcast from Spotify for Creators](migrating-from-spotify.md)
 - [Connecting a show to YouTube](connecting-youtube.md)
+- [Running analytics by hand](running-analytics.md)
 
 ## Policies
 

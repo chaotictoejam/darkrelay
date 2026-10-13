@@ -85,6 +85,14 @@ export async function putShow(file: string, flags: { image?: string }, global: G
   );
 }
 
+/** Prints a show's current config as JSON, ready to edit and `show put` back. */
+export async function getShow(slug: string, global: GlobalOptions) {
+  const { bucket: name } = await resolveDeployment(global);
+  const show = await loadShow(new Bucket(name), slug);
+  if (!show) throw new Error(`Show "${slug}" does not exist`);
+  console.log(JSON.stringify(show, null, 2));
+}
+
 export async function setShowStatus(slug: string, status: 'draft' | 'live', global: GlobalOptions) {
   const { bucket: name, baseUrl } = await resolveDeployment(global);
   const bucket = new Bucket(name);

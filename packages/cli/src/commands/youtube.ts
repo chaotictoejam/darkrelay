@@ -206,12 +206,19 @@ export interface Match {
   guid: string;
   title: string;
   videoId: string;
+  /** Whether the video's title or its description named the episode. */
+  by: 'title' | 'description';
 }
 
-/** Pairs unlinked episodes with channel uploads of the same title. Ambiguous titles are left out. */
-export function matchByTitle(
+/**
+ * Pairs unlinked episodes with channel uploads. First by identical title; then, for
+ * videos with their own YouTube title, by the episode title appearing in the video's
+ * description. Anything ambiguous (two candidate videos, or one video naming two
+ * episodes) is left out for linking by hand.
+ */
+export function matchUploads(
   episodes: Pick<EpisodeManifest, 'guid' | 'title' | 'youtube'>[],
-  uploads: { videoId: string; title: string }[],
+  uploads: { videoId: string; title: string; description?: string }[],
 ): { matches: Match[]; unmatched: string[] } {
   const byTitle = new Map<string, string[]>();
   for (const u of uploads) {
@@ -220,13 +227,42 @@ export function matchByTitle(
   }
   const taken = new Set(episodes.map((e) => e.youtube?.videoId).filter(Boolean));
   const matches: Match[] = [];
-  const unmatched: string[] = [];
+  let rest: Pick<EpisodeManifest, 'guid' | 'title'>[] = [];
   for (const e of episodes) {
     if (e.youtube) continue;
     const ids = (byTitle.get(normalizeTitle(e.title)) ?? []).filter((id) => !taken.has(id));
     if (ids.length === 1) {
-      matches.push({ guid: e.guid, title: e.title, videoId: ids[0]! });
+      matches.push({ guid: e.guid, title: e.title, videoId: ids[0]!, by: 'title' });
       taken.add(ids[0]!);
+    } else {
+      rest.push(e);
+    }
+  }
+
+  // Padded with spaces so "episode 1" doesn't match inside "episode 12".
+  const pad = (t: string) => ` ${normalizeTitle(t)} `;
+  rest = rest.filter((e) => pad(e.title).trim());
+  const candidates = new Map<string, string[]>();
+  for (const u of uploads) {
+    if (taken.has(u.videoId) || !u.description) continue;
+    const description = pad(u.description);
+    const named = rest.filter((e) => description.includes(pad(e.title)));
+    // "Git Basics Part 2" also contains "Git Basics": keep only the longest titles named.
+    for (const e of named) {
+      if (named.some((o) => o !== e && pad(o.title).includes(pad(e.title)))) continue;
+      candidates.set(e.guid, [...(candidates.get(e.guid) ?? []), u.videoId]);
+    }
+  }
+  const claims = new Map<string, number>();
+  for (const ids of candidates.values()) {
+    if (ids.length === 1) claims.set(ids[0]!, (claims.get(ids[0]!) ?? 0) + 1);
+  }
+  const unmatched: string[] = [];
+  for (const e of episodes) {
+    if (e.youtube || matches.some((m) => m.guid === e.guid)) continue;
+    const ids = candidates.get(e.guid) ?? [];
+    if (ids.length === 1 && claims.get(ids[0]!) === 1) {
+      matches.push({ guid: e.guid, title: e.title, videoId: ids[0]!, by: 'description' });
     } else {
       unmatched.push(e.title);
     }
@@ -263,7 +299,7 @@ export async function link(slug: string, guid: string, video: string, g: GlobalO
   console.log(`Linked to https://youtu.be/${videoId}`);
 }
 
-/** Finds existing channel uploads for unlinked episodes by title. --apply links them. */
+/** Finds existing channel uploads for unlinked episodes by title or description. --apply links them. */
 export async function match(slug: string, flags: { apply?: boolean }, g: GlobalOptions) {
   const bucket = new Bucket((await resolveDeployment(g)).bucket);
   const show = await loadShow(bucket, slug);
@@ -271,11 +307,14 @@ export async function match(slug: string, flags: { apply?: boolean }, g: GlobalO
   const yt = await clientFor(show, g);
   const channel = await yt.myChannel();
   const episodes = await loadEpisodes(bucket, slug);
-  const { matches, unmatched } = matchByTitle(
+  const { matches, unmatched } = matchUploads(
     episodes,
     await yt.listUploads(channel.uploadsPlaylist),
   );
-  for (const m of matches) console.log(`  match   ${m.title}  ->  https://youtu.be/${m.videoId}`);
+  for (const m of matches) {
+    const via = m.by === 'description' ? '  (named in description)' : '';
+    console.log(`  match   ${m.title}  ->  https://youtu.be/${m.videoId}${via}`);
+  }
   for (const t of unmatched) console.log(`  none    ${t}`);
   if (!flags.apply) {
     console.log(`\n${matches.length} matches. Run again with --apply to link them.`);

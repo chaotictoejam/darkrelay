@@ -11,7 +11,7 @@ import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
 import { bundleStatus, publish } from './commands/publish';
-import { putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
+import { getShow, putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
 import { validate } from './commands/validate';
 import * as youtube from './commands/youtube';
 
@@ -26,6 +26,10 @@ show
   .description('Create or update a show from a JSON file')
   .option('--image <path>', 'upload show artwork (JPEG or PNG, 1400-3000 px square)')
   .action((file, o) => putShow(file, o, g()));
+show
+  .command('get <slug>')
+  .description("Print a show's current JSON (edit it, then show put it back)")
+  .action((slug) => getShow(slug, g()));
 show
   .command('go-live <slug>')
   .description('Publish the public feed for a draft show')

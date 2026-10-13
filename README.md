@@ -87,6 +87,10 @@ aws acm describe-certificate --region us-east-1 --certificate-arn <arn>   # show
 npx darkrelay show put my-show.json --image cover.jpg
 npx darkrelay show go-live my-show
 
+# Change a show later: fetch its current JSON, edit it, put it back
+npx darkrelay show get my-show > my-show.json
+npx darkrelay show put my-show.json
+
 # Publish a DarkRoom MP3 export
 npx darkrelay publish "Episode 12.mp3" --show my-show \
   --title "Episode 12" --notes notes.html --season 2 --episode 12 --transcript ep12.vtt
@@ -229,6 +233,8 @@ npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 
 npx darkrelay dashboard add-user you@example.com  # Cognito emails a temporary password
 npx darkrelay dashboard remove-user you@example.com
 ```
+
+To run the download or YouTube pulls yourself (catch up, backfill, or check the logs are readable), see [docs/running-analytics.md](docs/running-analytics.md).
 
 **Adding a data source** (YouTube, CSV imports, prefix redirects) means writing daily items in the shape defined in `packages/core/src/analytics/metrics.ts` with a new `source`. The dashboard sums all sources and needs no changes.
 
