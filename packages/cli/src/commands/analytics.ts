@@ -33,7 +33,7 @@ export function datesFor(
     for (let t = Date.parse(valid(flags.from)); t <= Date.parse(to); t += 86_400_000) {
       out.push(new Date(t).toISOString().slice(0, 10));
     }
-    if (out.length > 120) throw new Error('At most 120 days per run');
+    if (out.length > 400) throw new Error('At most 400 days per run');
     return out;
   }
   return [new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10)];
@@ -41,12 +41,28 @@ export function datesFor(
 
 /** Runs the nightly aggregation now for the given days. Safe to repeat. */
 export async function runAnalytics(
-  flags: { date?: string[]; from?: string; to?: string },
+  flags: { date?: string[]; from?: string; to?: string; source?: string },
   global: GlobalOptions,
 ) {
   const dates = datesFor(flags);
   const out = await stackOutputs(global, 'Analytics');
   const lambda = new LambdaClient({ region });
+  if (flags.source === 'youtube') {
+    const range = { from: dates[0]!, to: dates.at(-1)! };
+    console.log(`Pulling YouTube Analytics ${range.from} to ${range.to} ...`);
+    const r = await lambda.send(
+      new InvokeCommand({
+        FunctionName: out['YouTubeAnalyticsFunctionName'],
+        Payload: new TextEncoder().encode(JSON.stringify(range)),
+      }),
+    );
+    const body = new TextDecoder().decode(r.Payload ?? new Uint8Array());
+    if (r.FunctionError) throw new Error(`YouTube pull failed: ${body}`);
+    console.log(`  ${JSON.stringify(JSON.parse(body).shows)}`);
+    return;
+  }
+  if (flags.source && flags.source !== 'cloudfront')
+    throw new Error(`Unknown source "${flags.source}" (cloudfront or youtube)`);
   // A few days per invocation keeps each well inside the Lambda timeout.
   for (let i = 0; i < dates.length; i += 5) {
     const batch = dates.slice(i, i + 5);

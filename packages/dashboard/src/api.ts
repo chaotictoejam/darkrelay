@@ -8,6 +8,7 @@ export interface Day {
 
 export interface Breakdown {
   downloads: number;
+  watchSeconds?: number;
   serverDownloads: number;
   apps: Record<string, number>;
   countries: Record<string, number>;
@@ -33,6 +34,7 @@ export interface SeriesResponse {
   daily: Day[];
   totals: Breakdown;
   sources: string[];
+  bySource: { source: string; plays: number; watchSeconds: number }[];
 }
 
 export interface ShowResponse extends SeriesResponse {

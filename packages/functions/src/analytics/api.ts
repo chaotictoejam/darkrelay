@@ -26,7 +26,12 @@ export function summarize(items: MetricItem[]) {
   const byDate = new Map<string, { date: string; downloads: number; serverDownloads: number }>();
   const total = emptyCounts();
   const sources = new Set<string>();
+  const bySource = new Map<string, { source: string; plays: number; watchSeconds: number }>();
   for (const i of items) {
+    const s = bySource.get(i.source) ?? { source: i.source, plays: 0, watchSeconds: 0 };
+    s.plays += i.downloads;
+    s.watchSeconds += i.watchSeconds ?? 0;
+    bySource.set(i.source, s);
     const d = byDate.get(i.date) ?? { date: i.date, downloads: 0, serverDownloads: 0 };
     d.downloads += i.downloads;
     d.serverDownloads += i.serverDownloads;
@@ -38,6 +43,7 @@ export function summarize(items: MetricItem[]) {
     daily: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     totals: total,
     sources: [...sources].sort(),
+    bySource: [...bySource.values()].sort((a, b) => b.plays - a.plays),
   };
 }
 

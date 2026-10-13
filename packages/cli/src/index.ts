@@ -11,8 +11,9 @@ import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
 import { bundleStatus, publish } from './commands/publish';
-import { putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
+import { getShow, putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
 import { validate } from './commands/validate';
+import * as youtube from './commands/youtube';
 
 const program = new Command('darkrelay')
   .description('Publish podcasts to your own DarkRelay deployment')
@@ -25,6 +26,10 @@ show
   .description('Create or update a show from a JSON file')
   .option('--image <path>', 'upload show artwork (JPEG or PNG, 1400-3000 px square)')
   .action((file, o) => putShow(file, o, g()));
+show
+  .command('get <slug>')
+  .description("Print a show's current JSON (edit it, then show put it back)")
+  .action((slug) => getShow(slug, g()));
 show
   .command('go-live <slug>')
   .description('Publish the public feed for a draft show')
@@ -126,6 +131,31 @@ episode
   .description('Put a hidden episode back in the feed')
   .action((slug, guid) => setEpisodeStatus(slug, guid, 'published', g()));
 
+const yt = program.command('youtube').description('YouTube uploads and analytics');
+yt.command('client')
+  .description('Store the Google OAuth client (Desktop app) used for YouTube')
+  .option('--file <path>', 'client_secret.json downloaded from Google Cloud Console')
+  .option('--client-id <id>')
+  .option('--client-secret <secret>')
+  .action((o) => youtube.setClient(o, g()));
+yt.command('connect <name>')
+  .description('Sign in to a YouTube channel and store its token (once per channel)')
+  .action((name) => youtube.connect(name, g()));
+yt.command('status <slug>')
+  .description("Each episode's YouTube video or upload progress")
+  .action((slug) => youtube.status(slug, g()));
+yt.command('link <slug> <guid> <video>')
+  .description('Link an episode to a video already on YouTube (id or URL)')
+  .action((slug, guid, video) => youtube.link(slug, guid, video, g()));
+yt.command('match <slug>')
+  .description('Find existing channel uploads for episodes by title or description')
+  .option('--apply', 'link the matches')
+  .action((slug, o) => youtube.match(slug, o, g()));
+yt.command('upload <slug> <guid>')
+  .description('Upload one episode now')
+  .option('--force', 'upload again even if it already has a video')
+  .action((slug, guid, o) => youtube.uploadNow(slug, guid, o, g()));
+
 const analytics = program.command('analytics').description('Download analytics');
 analytics
   .command('run')
@@ -133,6 +163,7 @@ analytics
   .option('--date <date...>', 'specific UTC days, YYYY-MM-DD')
   .option('--from <date>', 'first day of a range')
   .option('--to <date>', 'last day of a range (default: yesterday)')
+  .option('--source <source>', 'cloudfront (download logs, kept 90 days) or youtube', 'cloudfront')
   .action((o) => runAnalytics(o, g()));
 analytics
   .command('check')

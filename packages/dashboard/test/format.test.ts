@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { compact, daysBetween, deviceName, fillDays, niceTicks, topEntries } from '../src/format';
+import {
+  compact,
+  daysBetween,
+  deviceName,
+  duration,
+  fillDays,
+  niceTicks,
+  sourceName,
+  topEntries,
+} from '../src/format';
 
 describe('format', () => {
   it.each([
@@ -41,5 +50,18 @@ describe('format', () => {
   it('names device categories', () => {
     expect(deviceName('smart_speaker')).toBe('Smart speaker');
     expect(deviceName('new_thing')).toBe('new thing');
+  });
+
+  it.each([
+    [42, '42s'],
+    [144, '2m 24s'],
+    [5400, '1h 30m'],
+    [7200, '2h'],
+    [45000, '12h'],
+  ])('duration(%s) = %s', (n, out) => expect(duration(n)).toBe(out));
+
+  it('names sources, and passes unknown ones through', () => {
+    expect(sourceName('youtube')).toBe('YouTube (views)');
+    expect(sourceName('new-source')).toBe('new-source');
   });
 });

@@ -8,3 +8,6 @@ coverage/
 darkrelay.config.json
 # Dry-run output from `darkrelay import --dry-run` (default --out).
 import-*/
+# Local credentials, e.g. the Google OAuth client JSON for `darkrelay youtube client`.
+secrets/
+client_secret*.json

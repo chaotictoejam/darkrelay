@@ -25,6 +25,7 @@ export const layout = {
   inboxPrefix: (show: string, bundleId: string) => `inbox/${show}/${bundleId}/`,
   inboxStatus: (show: string, bundleId: string) => `inbox-status/${show}/${bundleId}.json`,
   rebuildRequest: (show: string) => `requests/${show}/rebuild`,
+  youtubeUpload: (show: string, episodeId: string) => `catalog/${show}/youtube/${episodeId}.json`,
 };
 
 /** Stable, path-safe id for an episode, derived from its RSS guid. */

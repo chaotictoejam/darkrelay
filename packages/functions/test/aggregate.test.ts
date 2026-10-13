@@ -126,6 +126,7 @@ describe('windowTotals', () => {
       downloads90: 15,
       downloadsTotal: 21,
       serverTotal: 0,
+      watchSecondsTotal: 0,
     });
   });
 });

@@ -329,7 +329,8 @@ td {
   border-bottom: 1px solid var(--hairline);
 }
 td.num,
-.episodes th:nth-child(n + 3) {
+.episodes th:nth-child(n + 3),
+.sources th:nth-child(n + 2) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
