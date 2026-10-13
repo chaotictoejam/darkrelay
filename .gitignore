@@ -6,3 +6,5 @@ coverage/
 .env
 # Your deployment config. Copy darkrelay.config.example.json to start.
 darkrelay.config.json
+# Dry-run output from `darkrelay import --dry-run` (default --out).
+import-*/

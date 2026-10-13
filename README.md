@@ -149,7 +149,9 @@ episode instead of creating a new one. Run `npx darkrelay --help` for every comm
 
 ## Moving a show from another host
 
-Migration is three steps, and only the last one is visible to listeners.
+Migration is three steps, and only the last one is visible to listeners. Coming from Spotify for
+Creators (Anchor)? Follow the step-by-step guide in
+[docs/migrating-from-spotify.md](docs/migrating-from-spotify.md).
 
 1. **Import** (available now). Copies show and episode details into a draft show. Media stays on
    the old host; nothing public changes.
@@ -312,6 +314,7 @@ npx darkrelay analytics check                     # after the first deploy: are 
 npx darkrelay analytics run                       # count yesterday now
 npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 90 days)
 npx darkrelay dashboard add-user you@example.com  # Cognito emails a temporary password
+npx darkrelay dashboard remove-user you@example.com
 ```
 
 **Adding a data source** (YouTube, CSV imports, prefix redirects) means writing daily items in the
