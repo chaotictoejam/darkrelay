@@ -170,8 +170,8 @@ Each show chooses how it treats video with `video.hls` in its show file:
 A video-only upload on an audio-first show still works: the audio is extracted, no HLS is built.
 
 ```bash
-npx darkrelay publish "HCU 04.mp4" --show her-career-unplugged --title "..." --notes notes.html
-npx darkrelay bundle her-career-unplugged <bundleId>   # check on it later
+npx darkrelay publish episode.mp4 --show my-show --title "..." --notes notes.html
+npx darkrelay bundle my-show <bundleId>   # check on it later
 ```
 
 How it runs: the publisher starts one Fargate Spot task per upload (4 vCPU, 8 GB, 60 GB scratch; configurable under `transcoder` in `darkrelay.config.json`). Tasks run in public subnets with a public IP, so there's no NAT gateway; S3 traffic uses a free gateway endpoint. The task writes the audio and HLS, then `processed.json`, which resumes publishing. If Spot reclaims the task, the publisher retries once on regular Fargate; a second failure rejects the bundle with the reason. Uploads over 5 GB are copied with multipart copy.
@@ -196,9 +196,9 @@ Each show can upload its episode videos to a YouTube channel and pull views, wat
 **Episodes already on YouTube:** link them, then backfill their analytics.
 
 ```bash
-npx darkrelay youtube match chaotic-commits           # pairs episodes and uploads by title
-npx darkrelay youtube match chaotic-commits --apply
-npx darkrelay youtube link chaotic-commits <guid> https://youtu.be/<id>   # one at a time
+npx darkrelay youtube match my-show           # pairs episodes and uploads by title
+npx darkrelay youtube match my-show --apply
+npx darkrelay youtube link my-show <guid> https://youtu.be/<id>   # one at a time
 npx darkrelay analytics run --source youtube --from 2026-04-01
 ```
 
