@@ -296,3 +296,7 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 5. HLS retention curves
 6. Prefix mode: analytics for shows that stay on another host
 7. Apple and Spotify CSV imports
+
+Further out:
+
+- **Video feed for Apple Podcasts.** Apple's HLS video is only open to partner hosts through a private API, and Apple ignores `podcast:alternateEnclosure`. Self-hosted video can reach Apple Podcasts only as a separate video-only feed with MP4 enclosures (a second listing, like This Week in Tech). This would need an MP4 rendition from the transcoder and a second feed per show.
