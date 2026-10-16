@@ -150,6 +150,29 @@ describe('publishing a bundle', () => {
     expect(xml).toContain('<pubDate>Sun, 11 Oct 2026 12:00:00 GMT</pubDate>');
   });
 
+  it('re-publishing keeps the YouTube link and copy; an empty youtube object clears the copy', async () => {
+    await upload('b1', {
+      'audio.mp3': 'x',
+      'episode.json': episodeJson({ youtube: { title: 'Search Title' } }),
+    });
+    const key = (await store.list(layout.episodesPrefix('show')))[0]!.key;
+    expect(store.json(key).youtubeCopy).toEqual({ title: 'Search Title' });
+
+    // The YouTube uploader links the video it made.
+    const link = { videoId: 'vid1', linkedAt: '2026-10-11T12:00:00Z', metadataHash: 'h' };
+    store.seed(key, JSON.stringify({ ...store.json(key), youtube: link }));
+
+    await upload('b2', { 'audio.mp3': 'xx', 'episode.json': episodeJson({ title: 'Fixed' }) });
+    expect(store.json(key)).toMatchObject({
+      youtube: link,
+      youtubeCopy: { title: 'Search Title' },
+    });
+
+    await upload('b3', { 'audio.mp3': 'x', 'episode.json': episodeJson({ youtube: {} }) });
+    expect(store.json(key).youtubeCopy).toBeUndefined();
+    expect(store.json(key).youtube).toEqual(link);
+  });
+
   it('generates a guid when episode.json has none', async () => {
     const result = await upload('b1', {
       'audio.mp3': 'x',

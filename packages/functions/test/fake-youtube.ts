@@ -20,6 +20,9 @@ export class FakeYouTube {
   captions: { videoId: string; body: string }[] = [];
   playlist: { playlistId: string; videoId: string }[] = [];
   statusUpdates: { id: string; status: Record<string, unknown> }[] = [];
+  snippetUpdates: { id: string; snippet: Record<string, unknown> }[] = [];
+  /** Fail snippet updates with this HTTP status (e.g. 403 quotaExceeded). */
+  failSnippet?: number;
   /** Chunks to fail with a 503 after storing nothing (simulates a dropped connection). */
   failNextChunks = 0;
   /** What the "audit" forces new videos to. */
@@ -124,7 +127,12 @@ export class FakeYouTube {
       return { status: 200, body: {} };
     }
     if (url.pathname === '/youtube/v3/videos' && req.method === 'PUT') {
-      this.statusUpdates.push(JSON.parse(body.toString()));
+      if (url.searchParams.get('part') === 'snippet') {
+        if (this.failSnippet) return { status: this.failSnippet, body: 'quotaExceeded' };
+        this.snippetUpdates.push(JSON.parse(body.toString()));
+      } else {
+        this.statusUpdates.push(JSON.parse(body.toString()));
+      }
       return { status: 200, body: {} };
     }
     if (url.pathname === '/analytics/v2/reports')

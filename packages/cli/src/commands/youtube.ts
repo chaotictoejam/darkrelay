@@ -333,6 +333,17 @@ export async function match(slug: string, flags: { apply?: boolean }, g: GlobalO
   );
 }
 
+async function invokeUploader(g: GlobalOptions, event: Record<string, unknown>) {
+  const r = await new LambdaClient({ region }).send(
+    new InvokeCommand({
+      FunctionName: `${g.stackPrefix}-youtube-upload`,
+      InvocationType: 'Event',
+      Payload: new TextEncoder().encode(JSON.stringify(event)),
+    }),
+  );
+  if (r.FunctionError) throw new Error(`Could not start the YouTube worker: ${r.FunctionError}`);
+}
+
 /** Uploads (or re-uploads with --force) one episode now. */
 export async function uploadNow(
   slug: string,
@@ -340,17 +351,39 @@ export async function uploadNow(
   flags: { force?: boolean },
   g: GlobalOptions,
 ) {
-  const r = await new LambdaClient({ region }).send(
-    new InvokeCommand({
-      FunctionName: `${g.stackPrefix}-youtube-upload`,
-      InvocationType: 'Event',
-      Payload: new TextEncoder().encode(
-        JSON.stringify({ show: slug, episodeId: episodeId(guid), force: flags.force }),
-      ),
-    }),
-  );
-  if (r.FunctionError) throw new Error(`Could not start the upload: ${r.FunctionError}`);
+  await invokeUploader(g, { show: slug, episodeId: episodeId(guid), force: flags.force });
   console.log(`Upload started. Check it with: darkrelay youtube status ${slug}`);
+}
+
+/**
+ * Sends an episode's YouTube title and description to its video now. Videos
+ * DarkRelay uploaded are kept in step on every republish anyway; this is for
+ * pushing without one, or (with --force) for a video that was only linked.
+ */
+export async function syncNow(
+  slug: string,
+  guid: string,
+  flags: { force?: boolean },
+  g: GlobalOptions,
+) {
+  const bucket = new Bucket((await resolveDeployment(g)).bucket);
+  const id = episodeId(guid);
+  const raw = await bucket.getText(layout.episodeManifest(slug, id));
+  if (!raw) throw new Error(`No episode with guid "${guid}" in ${slug}`);
+  const manifest = EpisodeManifest.parse(JSON.parse(raw));
+  if (!manifest.youtube) throw new Error('This episode has no YouTube video yet.');
+  const state = await bucket.getText(layout.youtubeUpload(slug, id));
+  const uploaded =
+    state && UploadState.parse(JSON.parse(state)).videoId === manifest.youtube.videoId;
+  if (!uploaded && !flags.force) {
+    throw new Error(
+      `https://youtu.be/${manifest.youtube.videoId} was linked, not uploaded by DarkRelay, so its title and description are left alone. Add --force to overwrite them with the episode's.`,
+    );
+  }
+  await invokeUploader(g, { show: slug, episodeId: id, pushMetadata: true });
+  console.log(
+    `Updating https://youtu.be/${manifest.youtube.videoId}. Check it with: darkrelay youtube status ${slug}`,
+  );
 }
 
 /** Each episode's YouTube video or upload progress. */
@@ -369,6 +402,7 @@ export async function status(slug: string, g: GlobalOptions) {
       line = `uploading ${s.total ? Math.round((s.offset / s.total) * 100) : 0}%`;
     else if (s?.state === 'failed') line = `FAILED: ${s.error}`;
     else line = e.video ? 'not uploaded' : 'no video';
+    if (e.youtube && e.youtubeCopy) line += '  (own YouTube copy)';
     console.log(`${e.pubDate.slice(0, 10)}  ${e.title}\n            ${line}`);
     for (const w of s?.warnings ?? []) console.log(`            warning: ${w}`);
   }

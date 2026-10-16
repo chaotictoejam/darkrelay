@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { chapterLines, formatTimestamp, htmlToText, youtubeMetadata } from '../src';
+import {
+  EpisodeInput,
+  chapterLines,
+  formatTimestamp,
+  hasChapterTimestamps,
+  htmlToText,
+  youtubeMetadata,
+  youtubeMetadataHash,
+} from '../src';
 
 describe('htmlToText', () => {
   it('keeps paragraphs, list items and links, and decodes entities', () => {
@@ -85,5 +93,85 @@ describe('youtubeMetadata', () => {
     expect(m.description).toBe(
       'Notes\n\nChapters\n0:00 A\n0:20 B\n0:40 C\n\nListen: https://media.example.com',
     );
+  });
+
+  const chapters = [
+    { startTime: 0, title: 'A' },
+    { startTime: 20, title: 'B' },
+    { startTime: 40, title: 'C' },
+  ];
+
+  it("uses the episode's own YouTube copy as plain text, still with chapters and footer", () => {
+    const m = youtubeMetadata({
+      title: 'blame: feed title',
+      descriptionHtml: '<p>Feed notes</p>',
+      copy: { title: 'Search Title', description: 'Plain & simple <3' },
+      chapters,
+      footer: 'Listen: https://media.example.com',
+      tags: [],
+    });
+    expect(m.title).toBe('Search Title');
+    expect(m.description).toBe(
+      'Plain & simple ‹3\n\nChapters\n0:00 A\n0:20 B\n0:40 C\n\nListen: https://media.example.com',
+    );
+    // Only the title overridden: the show notes stay the description.
+    expect(
+      youtubeMetadata({
+        title: 't',
+        descriptionHtml: '<p>Feed notes</p>',
+        copy: { title: 'T2' },
+        tags: [],
+      }),
+    ).toMatchObject({ title: 'T2', description: 'Feed notes' });
+  });
+
+  it('does not add a second chapter list to copy that has its own timestamps', () => {
+    const own = 'Intro text\n\n00:00 Cold open\n01:14 Intro\n02:56 Part one';
+    const m = youtubeMetadata({
+      title: 't',
+      descriptionHtml: '',
+      copy: { description: own },
+      chapters,
+      tags: [],
+    });
+    expect(m.description).toBe(own);
+    expect(hasChapterTimestamps(own)).toBe(true);
+    expect(hasChapterTimestamps('0:00 Start')).toBe(true);
+    expect(hasChapterTimestamps('At 2:07am, 10:00 things happened')).toBe(false);
+  });
+});
+
+describe('youtubeMetadataHash', () => {
+  const s = { title: 'T', description: 'D', tags: ['a'], categoryId: '27' };
+  it('is stable for the same metadata and changes with any field', () => {
+    expect(youtubeMetadataHash(s)).toBe(youtubeMetadataHash({ ...s }));
+    for (const change of [
+      { title: 'T2' },
+      { description: 'D2' },
+      { tags: ['b'] },
+      { categoryId: '28' },
+    ])
+      expect(youtubeMetadataHash({ ...s, ...change })).not.toBe(youtubeMetadataHash(s));
+  });
+});
+
+describe('EpisodeInput youtube copy', () => {
+  const base = { schemaVersion: 1, show: 's', title: 'T', description: 'D', durationSeconds: 1 };
+  it('accepts it trimmed, and is optional', () => {
+    expect(EpisodeInput.parse({ ...base, youtube: { title: ' Hi ' } }).youtube).toEqual({
+      title: 'Hi',
+    });
+    expect(EpisodeInput.parse(base).youtube).toBeUndefined();
+  });
+  it('rejects what YouTube would', () => {
+    expect(EpisodeInput.safeParse({ ...base, youtube: { title: 'x'.repeat(101) } }).success).toBe(
+      false,
+    );
+    expect(EpisodeInput.safeParse({ ...base, youtube: { description: 'a > b' } }).success).toBe(
+      false,
+    );
+    expect(
+      EpisodeInput.safeParse({ ...base, youtube: { description: 'é'.repeat(2501) } }).success,
+    ).toBe(false);
   });
 });

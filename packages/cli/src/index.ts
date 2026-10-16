@@ -59,6 +59,11 @@ program
   .option('--chapters <file>', 'Podcasting 2.0 JSON chapters')
   .option('--cover <file>', 'episode artwork')
   .option('--video <file>', 'video alongside the audio (e.g. an audiogram for YouTube)')
+  .option('--yt-title <title>', 'YouTube title, if different from the episode title')
+  .option(
+    '--yt-description <file>',
+    'YouTube description (plain text) from a file, instead of the show notes',
+  )
   .option('--no-wait', "don't wait for the publish result")
   .action((path, o) => publish(path, o, g()));
 
@@ -151,6 +156,10 @@ yt.command('match <slug>')
   .description('Find existing channel uploads for episodes by title or description')
   .option('--apply', 'link the matches')
   .action((slug, o) => youtube.match(slug, o, g()));
+yt.command('sync <slug> <guid>')
+  .description("Send an episode's title and description to its YouTube video now")
+  .option('--force', 'also for a video that was linked rather than uploaded by DarkRelay')
+  .action((slug, guid, o) => youtube.syncNow(slug, guid, o, g()));
 yt.command('upload <slug> <guid>')
   .description('Upload one episode now')
   .option('--force', 'upload again even if it already has a video')

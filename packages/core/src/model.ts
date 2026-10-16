@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { YT_DESCRIPTION_MAX_BYTES, YT_TITLE_MAX } from './youtube';
 
 export const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
@@ -26,6 +27,33 @@ export const Person = z.object({
   img: z.url().optional(),
 });
 export type Person = z.infer<typeof Person>;
+
+const noAngles = (s: string) => !/[<>]/.test(s);
+
+/**
+ * YouTube's own title and description for an episode, in place of the feed
+ * title and show notes. The description is plain text, as YouTube shows it.
+ */
+export const YouTubeCopy = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(YT_TITLE_MAX, `YouTube titles are limited to ${YT_TITLE_MAX} characters`)
+    .refine(noAngles, 'YouTube does not allow < or > in titles')
+    .optional(),
+  description: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (s) => new TextEncoder().encode(s).length <= YT_DESCRIPTION_MAX_BYTES,
+      `YouTube descriptions are limited to ${YT_DESCRIPTION_MAX_BYTES} bytes`,
+    )
+    .refine(noAngles, 'YouTube does not allow < or > in descriptions')
+    .optional(),
+});
+export type YouTubeCopy = z.infer<typeof YouTubeCopy>;
 
 export const ShowConfig = z.object({
   schemaVersion: z.literal(1),
@@ -142,8 +170,12 @@ export const EpisodeManifest = z.object({
       linkedAt: z.iso.datetime(),
       /** The release time YouTube was given, to resync if the episode is rescheduled. */
       publishAt: z.iso.datetime().optional(),
+      /** Hash of the title, description, tags and category last sent to YouTube. */
+      metadataHash: z.string().optional(),
     })
     .optional(),
+  /** YouTube title and description overriding the feed's, from `--yt-title`/`--yt-description`. */
+  youtubeCopy: YouTubeCopy.optional(),
   /** Original URLs of files copied in by migrate-media, keyed by role. */
   migratedFrom: z.record(z.string(), z.url()).optional(),
   updatedAt: z.iso.datetime(),

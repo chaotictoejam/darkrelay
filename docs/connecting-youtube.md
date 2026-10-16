@@ -60,7 +60,7 @@ Options: `upload` (default `true`), `privacy` (`public`, `unlisted`, `private`),
 
 ## 5. Link episodes already on YouTube
 
-Skip this for a new show. If you imported a show whose episodes are already on the channel, link each episode to its existing video so its views count. Linking only records the video ID: nothing is uploaded, and the video's privacy and schedule are left alone.
+Skip this for a new show. If you imported a show whose episodes are already on the channel, link each episode to its existing video so its views count. Linking only records the video ID: nothing is uploaded, and the video's privacy, schedule, title and description are left alone. (To overwrite a linked video's title and description with the episode's, use `npx darkrelay youtube sync <show> <guid> --force`.)
 
 Preview the matches first. This changes nothing:
 
@@ -94,4 +94,4 @@ YouTube keeps the full history, so you can go back as far as the channel does. E
 
 ## What happens next
 
-See [YouTube in the README](https://github.com/chaotictoejam/darkrelay#youtube) for how uploads work and the private-upload limit on new Google Cloud projects.
+See [YouTube in the README](https://github.com/chaotictoejam/darkrelay#youtube) for how uploads work, giving videos their own YouTube title and description (`--yt-title`, `--yt-description`), and the private-upload limit on new Google Cloud projects.

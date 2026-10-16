@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
 /** Limits YouTube enforces on video metadata. */
@@ -96,16 +97,28 @@ function truncateBytes(s: string, max: number): string {
 export interface VideoMetadataInput {
   title: string;
   descriptionHtml: string;
+  /** YouTube's own copy (plain text), used in place of the title and show notes. */
+  copy?: { title?: string; description?: string };
   chapters?: { startTime: number; title?: string }[];
   footer?: string;
   tags: string[];
 }
 
+/** True when text already has a timestamp list starting at 0:00, as YouTube chapters need. */
+export function hasChapterTimestamps(text: string): boolean {
+  return /^\s*(0?0:)?0?0:00\b/m.test(text);
+}
+
 /** Title, description and tags that pass YouTube's validation. */
 export function youtubeMetadata(input: VideoMetadataInput) {
-  const title = noAngles(decodeEntities(input.title)).trim().slice(0, YT_TITLE_MAX);
-  const chapters = input.chapters ? chapterLines(input.chapters) : undefined;
-  const parts = [noAngles(htmlToText(input.descriptionHtml))];
+  const title = noAngles(input.copy?.title ?? decodeEntities(input.title))
+    .trim()
+    .slice(0, YT_TITLE_MAX);
+  const body = input.copy?.description?.trim() ?? htmlToText(input.descriptionHtml);
+  // Copy with its own timestamps already has chapters; a second list would confuse YouTube.
+  const chapters =
+    input.chapters && !hasChapterTimestamps(body) ? chapterLines(input.chapters) : undefined;
+  const parts = [noAngles(body)];
   if (chapters) parts.push(`Chapters\n${chapters}`);
   if (input.footer) parts.push(noAngles(input.footer.trim()));
   const description = truncateBytes(parts.filter(Boolean).join('\n\n'), YT_DESCRIPTION_MAX_BYTES);
@@ -124,6 +137,23 @@ export function youtubeMetadata(input: VideoMetadataInput) {
   return { title, description, tags };
 }
 
+/**
+ * Fingerprint of the metadata a video was given, so a changed episode updates
+ * YouTube and an unchanged one does not spend quota.
+ */
+export function youtubeMetadataHash(snippet: {
+  title: string;
+  description: string;
+  tags: string[];
+  categoryId: string;
+}): string {
+  const { title, description, tags, categoryId } = snippet;
+  return createHash('sha256')
+    .update(JSON.stringify([title, description, tags, categoryId]))
+    .digest('hex')
+    .slice(0, 16);
+}
+
 /** State of one episode's upload, kept at catalog/<show>/youtube/<episodeId>.json. */
 export const UploadState = z.object({
   state: z.enum(['uploading', 'done', 'failed']),
@@ -133,6 +163,8 @@ export const UploadState = z.object({
   total: z.number().int().positive().optional(),
   videoKey: z.string().optional(),
   videoId: z.string().optional(),
+  /** `youtubeMetadataHash` of the metadata the upload was started with. */
+  metadataHash: z.string().optional(),
   warnings: z.array(z.string()).default([]),
   error: z.string().optional(),
   startedAt: z.iso.datetime(),

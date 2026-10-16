@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Person, SLUG } from './model';
+import { Person, SLUG, YouTubeCopy } from './model';
 
 /**
  * `episode.json` in a DarkRoom bundle. The CLI writes it for you when you
@@ -23,6 +23,8 @@ export const EpisodeInput = z.object({
   persons: z.array(Person).default([]),
   keywords: z.array(z.string()).default([]),
   transcriptLanguage: z.string().optional(),
+  /** YouTube's own title and description. Absent: YouTube gets the feed's. */
+  youtube: YouTubeCopy.optional(),
 });
 export type EpisodeInput = z.infer<typeof EpisodeInput>;
 export type EpisodeInputRaw = z.input<typeof EpisodeInput>;

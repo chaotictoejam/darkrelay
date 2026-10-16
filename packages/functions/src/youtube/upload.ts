@@ -6,6 +6,7 @@ import {
   publicKey,
   validateChapters,
   youtubeMetadata,
+  youtubeMetadataHash,
   type ShowConfig,
   GoogleApiError,
   type YouTube,
@@ -38,6 +39,11 @@ export interface UploadEvent {
   force?: boolean;
   /** Set on hand-offs between invocations of the same upload. */
   continuation?: boolean;
+  /**
+   * Send the title and description to the episode's video now, even if
+   * unchanged or linked rather than uploaded (`darkrelay youtube sync`).
+   */
+  pushMetadata?: boolean;
 }
 
 export type UploadOutcome =
@@ -64,8 +70,9 @@ async function readJson<T>(
 
 /**
  * Runs whenever an episode manifest changes. Uploads the episode's video to
- * YouTube once, keeps a scheduled video's release time in step with the
- * episode, and does nothing otherwise. Safe to run any number of times.
+ * YouTube once, then keeps the video in step with the episode: a rescheduled
+ * episode moves its publishAt, and changed metadata updates the title and
+ * description of videos DarkRelay uploaded. Safe to run any number of times.
  */
 export async function onEpisodeChanged(
   deps: UploadDeps,
@@ -79,7 +86,7 @@ export async function onEpisodeChanged(
   if (!manifest) return 'no-episode';
   if (manifest.status === 'hidden') return 'hidden';
 
-  if (manifest.youtube && !event.force) return syncSchedule(deps, show, manifest, manifestKey);
+  if (manifest.youtube && !event.force) return syncVideo(deps, show, manifest, manifestKey, event);
   if (!manifest.video || !('key' in manifest.video)) return 'no-video';
   if (!show.youtube.upload && !event.force) return 'manual';
 
@@ -88,7 +95,7 @@ export async function onEpisodeChanged(
   let state = await readJson(store, stateKey, (v) => UploadState.parse(v));
   if (state?.state === 'done' && state.videoId && !event.force) {
     // Finished before the manifest was updated (e.g. a crash in between).
-    await linkVideo(deps, manifestKey, manifest, state.videoId, show);
+    await linkVideo(deps, manifestKey, manifest, state, show);
     return 'already';
   }
   if (state?.state === 'uploading' && !event.continuation) {
@@ -130,6 +137,14 @@ function isFuture(iso: string, now: Date) {
   return Date.parse(iso) > now.getTime();
 }
 
+/** The episode's chapters file, if it has a valid one. */
+async function loadChapters(store: Store, manifest: EpisodeManifest): Promise<unknown> {
+  if (!manifest.chapters || !('key' in manifest.chapters)) return undefined;
+  const text = await store.getText(publicKey(manifest.chapters.key));
+  const chapters = text ? JSON.parse(text) : undefined;
+  return chapters && validateChapters(chapters).length === 0 ? chapters : undefined;
+}
+
 /** Video resource for the upload: metadata plus privacy, scheduled if the episode is. */
 export function videoResource(
   show: ShowConfig,
@@ -141,6 +156,7 @@ export function videoResource(
   const meta = youtubeMetadata({
     title: manifest.title,
     descriptionHtml: manifest.description,
+    copy: manifest.youtubeCopy,
     chapters: Array.isArray((chapters as { chapters?: unknown })?.chapters)
       ? (chapters as { chapters: { startTime: number; title?: string }[] }).chapters
       : undefined,
@@ -182,18 +198,12 @@ async function upload(
   if (!state.sessionUri || state.videoKey !== videoKey) {
     const head = await store.head(videoKey);
     if (!head) throw new Error(`Video file missing: ${videoKey}`);
-    const chapters =
-      manifest.chapters && 'key' in manifest.chapters
-        ? await store
-            .getText(publicKey(manifest.chapters.key))
-            .then((t) => (t ? JSON.parse(t) : undefined))
-        : undefined;
-    const usable = chapters && validateChapters(chapters).length === 0 ? chapters : undefined;
-    const resource = videoResource(show, manifest, usable, deps.now());
+    const resource = videoResource(show, manifest, await loadChapters(store, manifest), deps.now());
     state.sessionUri = await yt.startUpload(resource, head.size, contentTypeFor(videoKey));
     state.total = head.size;
     state.offset = 0;
     state.videoKey = videoKey;
+    state.metadataHash = youtubeMetadataHash(resource.snippet);
     await save(store, stateKey, state, deps.now());
   }
 
@@ -240,7 +250,7 @@ async function upload(
     );
   }
   await addExtras(deps, yt, show, manifest, video.id, state);
-  await linkVideo(deps, manifestKey, manifest, video.id, show);
+  await linkVideo(deps, manifestKey, manifest, state, show);
   await save(store, stateKey, { ...state, state: 'done', sessionUri: undefined }, deps.now());
   deps.log('Uploaded to YouTube', { stateKey, videoId: video.id, warnings: state.warnings });
   return 'uploaded';
@@ -299,7 +309,7 @@ async function linkVideo(
   deps: UploadDeps,
   manifestKey: string,
   manifest: EpisodeManifest,
-  videoId: string,
+  state: UploadState,
   show: ShowConfig,
 ) {
   const now = deps.now();
@@ -307,9 +317,10 @@ async function linkVideo(
   const updated = EpisodeManifest.parse({
     ...manifest,
     youtube: {
-      videoId,
+      videoId: state.videoId!,
       linkedAt: now.toISOString(),
       publishAt: scheduled ? new Date(manifest.pubDate).toISOString() : undefined,
+      metadataHash: state.metadataHash,
     },
     updatedAt: now.toISOString(),
   });
@@ -319,34 +330,84 @@ async function linkVideo(
 }
 
 /**
- * Keeps a scheduled YouTube video in step with its episode: rescheduling the
- * episode moves the video's publishAt too. Released videos are left alone.
+ * Keeps an episode's video in step with the episode. Rescheduling moves a
+ * scheduled video's publishAt (released videos are left alone). Changed
+ * metadata updates the title and description, but only of videos DarkRelay
+ * uploaded: a linked video was made elsewhere, and is only written to by
+ * `darkrelay youtube sync --force`.
  */
-async function syncSchedule(
+async function syncVideo(
   deps: UploadDeps,
   show: ShowConfig,
   manifest: EpisodeManifest,
   manifestKey: string,
+  event: UploadEvent,
 ): Promise<UploadOutcome> {
   const yt = manifest.youtube!;
   const now = deps.now();
-  if (!yt.publishAt || !isFuture(yt.publishAt, now)) return 'already';
-  const target = new Date(manifest.pubDate).toISOString();
-  if (target === yt.publishAt) return 'already';
-  const client = await deps.youtubeFor(show.youtube!.connection);
-  await client.updateStatus(
-    yt.videoId,
-    isFuture(target, now)
-      ? { privacyStatus: 'private', publishAt: target, selfDeclaredMadeForKids: false }
-      : { privacyStatus: show.youtube!.privacy, selfDeclaredMadeForKids: false },
-  );
-  const updated = EpisodeManifest.parse({
-    ...manifest,
-    youtube: { ...yt, publishAt: isFuture(target, now) ? target : undefined },
-    updatedAt: now.toISOString(),
-  });
-  await deps.store.put(manifestKey, JSON.stringify(updated, null, 2), {
-    contentType: 'application/json',
-  });
-  return 'synced';
+  const next = { ...yt };
+  let client: YouTube | undefined;
+  const youtube = async () => (client ??= await deps.youtubeFor(show.youtube!.connection));
+
+  if (yt.publishAt && isFuture(yt.publishAt, now)) {
+    const target = new Date(manifest.pubDate).toISOString();
+    if (target !== yt.publishAt) {
+      await (
+        await youtube()
+      ).updateStatus(
+        yt.videoId,
+        isFuture(target, now)
+          ? { privacyStatus: 'private', publishAt: target, selfDeclaredMadeForKids: false }
+          : { privacyStatus: show.youtube!.privacy, selfDeclaredMadeForKids: false },
+      );
+      next.publishAt = isFuture(target, now) ? target : undefined;
+    }
+  }
+
+  const stateKey = layout.youtubeUpload(event.show, event.episodeId);
+  const state = await readJson(deps.store, stateKey, (v) => UploadState.parse(v));
+  const uploaded = state?.state === 'done' && state.videoId === yt.videoId;
+  let pushed = false;
+  if (uploaded || event.pushMetadata) {
+    const { snippet } = videoResource(
+      show,
+      manifest,
+      await loadChapters(deps.store, manifest),
+      now,
+    );
+    const hash = youtubeMetadataHash(snippet);
+    // Uploaded before hashes were kept: its YouTube copy may have been edited
+    // in Studio since. Adopt it as the baseline unless the episode now has
+    // copy of its own for YouTube.
+    const baseline = yt.metadataHash === undefined && !manifest.youtubeCopy;
+    if (event.pushMetadata || (!baseline && hash !== yt.metadataHash)) {
+      try {
+        await (await youtube()).updateSnippet(yt.videoId, snippet);
+        pushed = true;
+        deps.log('Updated YouTube metadata', { videoId: yt.videoId });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        deps.log('YouTube metadata update failed', { videoId: yt.videoId, error: message });
+        if (state) {
+          state.warnings.push(`Updating title and description: ${message}`);
+          await save(deps.store, stateKey, state, now);
+        }
+        throw e;
+      }
+    }
+    if (pushed || baseline) next.metadataHash = hash;
+  }
+
+  const scheduleMoved = next.publishAt !== yt.publishAt;
+  if (scheduleMoved || next.metadataHash !== yt.metadataHash) {
+    const updated = EpisodeManifest.parse({
+      ...manifest,
+      youtube: next,
+      updatedAt: now.toISOString(),
+    });
+    await deps.store.put(manifestKey, JSON.stringify(updated, null, 2), {
+      contentType: 'application/json',
+    });
+  }
+  return scheduleMoved || pushed ? 'synced' : 'already';
 }
