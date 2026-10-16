@@ -28,6 +28,9 @@ export interface PublishFlags {
   chapters?: string;
   cover?: string;
   video?: string;
+  ytTitle?: string;
+  /** File with the YouTube description (plain text). */
+  ytDescription?: string;
   wait?: boolean;
 }
 
@@ -93,6 +96,16 @@ export async function planBundle(
     ? await readFile(flags.notes, 'utf8')
     : (flags.description ?? base.description);
   const duration = base.durationSeconds ?? (await durationOf(mediaPath));
+  const youtube =
+    flags.ytTitle !== undefined || flags.ytDescription !== undefined
+      ? {
+          ...base.youtube,
+          ...(flags.ytTitle !== undefined ? { title: flags.ytTitle } : {}),
+          ...(flags.ytDescription !== undefined
+            ? { description: await readFile(flags.ytDescription, 'utf8') }
+            : {}),
+        }
+      : base.youtube;
 
   const raw: EpisodeInputRaw = {
     ...base,
@@ -107,6 +120,7 @@ export async function planBundle(
     season: flags.season ? Number(flags.season) : base.season,
     episode: flags.episode ? Number(flags.episode) : base.episode,
     explicit: flags.explicit ?? base.explicit,
+    youtube,
   };
   const parsed = EpisodeInput.safeParse(raw);
   if (!parsed.success) {

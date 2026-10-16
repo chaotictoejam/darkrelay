@@ -110,6 +110,8 @@ beforeEach(() => {
   fake.captions = [];
   fake.playlist = [];
   fake.statusUpdates = [];
+  fake.snippetUpdates = [];
+  fake.failSnippet = undefined;
   fake.failNextChunks = 0;
   fake.forcePrivate = false;
   deps = {
@@ -251,5 +253,111 @@ describe('YouTube upload', () => {
 
     seed();
     expect(await onEpisodeChanged(deps, { show: 'hcu', episodeId: ID })).toBe('uploaded');
+  });
+});
+
+describe('YouTube metadata', () => {
+  const ev = { show: 'hcu', episodeId: ID };
+  const rewrite = (patch: Record<string, unknown>) =>
+    store.seed(layout.episodeManifest('hcu', ID), JSON.stringify({ ...manifest(), ...patch }));
+
+  it("uploads with the episode's own YouTube copy and records what it sent", async () => {
+    seed({ manifest: { youtubeCopy: { title: 'Search Title', description: 'For YouTube.' } } });
+    expect(await onEpisodeChanged(deps, ev)).toBe('uploaded');
+    const video = [...fake.videos.values()][0]!;
+    expect(video.metadata.snippet['title']).toBe('Search Title');
+    expect(video.metadata.snippet['description']).toBe(
+      'For YouTube.\n\nChapters\n0:00 Intro\n1:00 Story\n10:00 Advice',
+    );
+    expect(manifest().youtube?.metadataHash).toMatch(/^[0-9a-f]{16}$/);
+    expect(state().metadataHash).toBe(manifest().youtube?.metadataHash);
+  });
+
+  it('a republish with changed copy updates the video once; unchanged writes cost nothing', async () => {
+    seed();
+    await onEpisodeChanged(deps, ev);
+    const videoId = manifest().youtube!.videoId;
+
+    rewrite({ updatedAt: '2026-10-13T00:00:00Z' }); // republished, same metadata
+    expect(await onEpisodeChanged(deps, ev)).toBe('already');
+    expect(fake.snippetUpdates).toEqual([]);
+
+    rewrite({ youtubeCopy: { title: 'Better Title' } });
+    expect(await onEpisodeChanged(deps, ev)).toBe('synced');
+    expect(fake.snippetUpdates).toHaveLength(1);
+    expect(fake.snippetUpdates[0]).toMatchObject({
+      id: videoId,
+      snippet: { title: 'Better Title', categoryId: '27', tags: ['careers', 'leadership'] },
+    });
+    // Its own manifest write comes back as an event: nothing more to do.
+    expect(await onEpisodeChanged(deps, ev)).toBe('already');
+    expect(fake.snippetUpdates).toHaveLength(1);
+  });
+
+  it('moves the schedule and updates the copy in one pass', async () => {
+    seed({ pubDate: '2026-10-20T10:00:00Z' });
+    await onEpisodeChanged(deps, ev);
+    rewrite({ pubDate: '2026-10-22T10:00:00Z', youtubeCopy: { title: 'New' } });
+    expect(await onEpisodeChanged(deps, ev)).toBe('synced');
+    expect(fake.statusUpdates).toHaveLength(1);
+    expect(fake.snippetUpdates).toHaveLength(1);
+    expect(manifest().youtube?.publishAt).toBe('2026-10-22T10:00:00.000Z');
+    expect(await onEpisodeChanged(deps, ev)).toBe('already');
+  });
+
+  it('leaves linked videos alone unless asked to push', async () => {
+    seed({
+      manifest: {
+        youtube: { videoId: 'linked00001', linkedAt: '2026-10-01T00:00:00Z' },
+        youtubeCopy: { title: 'Mine' },
+      },
+    });
+    expect(await onEpisodeChanged(deps, ev)).toBe('already');
+    expect(fake.snippetUpdates).toEqual([]);
+    expect(fake.videos.size).toBe(0);
+
+    expect(await onEpisodeChanged(deps, { ...ev, pushMetadata: true })).toBe('synced');
+    expect(fake.snippetUpdates[0]).toMatchObject({ id: 'linked00001', snippet: { title: 'Mine' } });
+  });
+
+  it('adopts the current copy of a video uploaded before hashes were kept, unless the episode has its own', async () => {
+    const legacy = {
+      youtube: { videoId: 'vidOld', linkedAt: '2026-10-01T00:00:00Z' },
+    };
+    seed({ manifest: legacy });
+    store.seed(
+      layout.youtubeUpload('hcu', ID),
+      JSON.stringify({
+        state: 'done',
+        videoId: 'vidOld',
+        offset: 0,
+        warnings: [],
+        startedAt: '2026-10-01T00:00:00Z',
+        updatedAt: '2026-10-01T00:00:00Z',
+      }),
+    );
+    // A reschedule or republish must not overwrite edits made in YouTube Studio.
+    expect(await onEpisodeChanged(deps, ev)).toBe('already');
+    expect(fake.snippetUpdates).toEqual([]);
+    expect(manifest().youtube?.metadataHash).toMatch(/^[0-9a-f]{16}$/);
+
+    rewrite({ youtube: legacy.youtube, youtubeCopy: { title: 'Search Title' } });
+    expect(await onEpisodeChanged(deps, ev)).toBe('synced');
+    expect(fake.snippetUpdates[0]).toMatchObject({
+      id: 'vidOld',
+      snippet: { title: 'Search Title' },
+    });
+  });
+
+  it('records a failed update as a warning and retries on the next change', async () => {
+    seed();
+    await onEpisodeChanged(deps, ev);
+    rewrite({ youtubeCopy: { title: 'New' } });
+    fake.failSnippet = 403;
+    await expect(onEpisodeChanged(deps, ev)).rejects.toThrow();
+    expect(state().warnings.at(-1)).toMatch(/Updating title and description/);
+
+    fake.failSnippet = undefined;
+    expect(await onEpisodeChanged(deps, ev)).toBe('synced');
   });
 });

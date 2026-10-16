@@ -199,6 +199,22 @@ export class YouTube {
     );
   }
 
+  /**
+   * Replaces the video's title, description, tags and category. YouTube
+   * replaces the whole snippet, so every field must be sent. 50 quota units.
+   */
+  async updateSnippet(videoId: string, snippet: Record<string, unknown>) {
+    await this.json(
+      `${this.endpoints.api}/youtube/v3/videos?part=snippet`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: videoId, snippet }),
+      },
+      'Updating the video title and description',
+    );
+  }
+
   async myChannel(): Promise<{ id: string; title: string; uploadsPlaylist: string }> {
     const r = await this.json<{
       items?: {

@@ -171,6 +171,10 @@ async function tryPublish(
     persons: input.persons,
     keywords: input.keywords,
     video: files.video ? await copyTo(files.video) : previous?.video,
+    // Without the link, a republished episode would look new to the YouTube uploader.
+    youtube: previous?.youtube,
+    // An episode.json without `youtube` keeps the copy it had; `"youtube": {}` clears it.
+    youtubeCopy: emptyToUndefined(input.youtube ?? previous?.youtubeCopy),
     updatedAt: deps.now().toISOString(),
   };
   const manifest = EpisodeManifest.parse(manifestInput);
@@ -190,4 +194,8 @@ async function tryPublish(
       Date.parse(manifest.pubDate) > deps.now().getTime() ? manifest.pubDate : undefined,
     ignoredFiles: ignored,
   };
+}
+
+function emptyToUndefined<T extends object>(o: T | undefined): T | undefined {
+  return o && Object.values(o).some((v) => v !== undefined) ? o : undefined;
 }

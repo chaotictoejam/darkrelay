@@ -123,7 +123,7 @@ How it works: the episode is stored and its media uploaded right away, but it st
 
 | File | Required | Notes |
 | --- | --- | --- |
-| `episode.json` | yes | Title, notes, dates. Schema: `packages/core/src/bundle.ts` |
+| `episode.json` | yes | Title, notes, dates, and optionally YouTube's own title and description. Schema: `packages/core/src/bundle.ts` |
 | `audio.mp3` or `audio.m4a` | yes | WAV and FLAC are rejected: export MP3 for feeds. |
 | `transcript.vtt` / `.srt` / `.json` | no | Each one becomes a `<podcast:transcript>`. |
 | `chapters.json` | no | Podcasting 2.0 JSON chapters. |
@@ -191,6 +191,22 @@ Each show can upload its episode videos to a YouTube channel and pull views, wat
 **Setup.** Follow [docs/connecting-youtube.md](docs/connecting-youtube.md) to create the Google Cloud project and OAuth client, connect each channel, and add `youtube` to the show file.
 
 **Uploads.** When an episode with a video publishes (a full video or an audiogram), it uploads to YouTube with the title, show notes as plain text, chapters as description timestamps, captions from the transcript, the episode art as thumbnail, and the playlist. A scheduled episode uploads right away as private with YouTube's `publishAt`, and moves if you reschedule the episode. Uploads resume across Lambda invocations, so long videos are fine. `npx darkrelay youtube status <show>` shows each episode's video, progress or error.
+
+**YouTube's own title and description.** By default the video gets the episode title and the show notes. To write them for YouTube instead (a title for search, a plain-text description with timestamps and hashtags), add them to `publish`:
+
+```bash
+npx darkrelay publish ep.mp3 --show my-show --title "blame: the feed title" --notes notes.html \
+  --video audiogram.mp4 --yt-title "Bus Factor: The Search Title" --yt-description youtube.txt
+```
+
+In a bundle, put them in `episode.json` as `"youtube": { "title": "...", "description": "..." }`. Either can be left out, and the feed's is used for that one. They're checked against YouTube's limits (title 100 characters, description 5000 bytes, no `<` or `>`) before anything uploads. If the description already has its own timestamps starting at `0:00`, chapters from `chapters.json` aren't added again. A republish keeps them unless you pass new ones; `"youtube": {}` in `episode.json` goes back to the feed's.
+
+**Keeping the video in step.** When you republish an episode whose video DarkRelay uploaded, a changed title, description or tags update the video on YouTube; an unchanged republish makes no API call. That update replaces edits made in YouTube Studio, so change a video's title and description with `--yt-title`/`--yt-description` rather than in Studio. Videos uploaded before this was added keep their current YouTube copy until the episode gets copy of its own. Linked videos (below) are never changed, unless you ask:
+
+```bash
+npx darkrelay youtube sync my-show <guid>           # send the title and description now
+npx darkrelay youtube sync my-show <guid> --force   # also for a linked video
+```
 
 **Two YouTube rules to know:**
 

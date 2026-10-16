@@ -113,6 +113,55 @@ describe('planBundle', () => {
       /title[\s\S]*description[\s\S]*durationSeconds/,
     );
   });
+
+  it('takes a YouTube title and description, and keeps them in the sidecar for republishing', async () => {
+    const audio = join(dir, 'ep.mp3');
+    const yt = join(dir, 'youtube.txt');
+    await writeFile(audio, 'x');
+    await writeFile(yt, 'For YouTube.\n\n00:00 Cold open\n');
+    const plan = await planBundle(
+      audio,
+      {
+        show: 's',
+        title: 'blame: feed title',
+        description: 'd',
+        ytTitle: 'Search Title',
+        ytDescription: yt,
+      },
+      duration,
+    );
+    expect(plan.input.youtube).toEqual({
+      title: 'Search Title',
+      description: 'For YouTube.\n\n00:00 Cold open',
+    });
+
+    // A republish without the flags reads them back from the sidecar; one flag replaces only itself.
+    await writeFile(plan.sidecar, JSON.stringify(plan.input));
+    const again = await planBundle(audio, { show: 's', ytTitle: 'New Title' }, duration);
+    expect(again.input.youtube).toEqual({
+      title: 'New Title',
+      description: 'For YouTube.\n\n00:00 Cold open',
+    });
+  });
+
+  it('refuses YouTube copy that YouTube would reject, before uploading', async () => {
+    const audio = join(dir, 'ep.mp3');
+    const yt = join(dir, 'youtube.txt');
+    await writeFile(audio, 'x');
+    await writeFile(yt, 'é'.repeat(2501));
+    await expect(
+      planBundle(
+        audio,
+        { show: 's', title: 'T', description: 'd', ytTitle: 'x'.repeat(101), ytDescription: yt },
+        duration,
+      ),
+    ).rejects.toThrow(
+      /100 characters[\s\S]*youtube\.title[\s\S]*5000 bytes[\s\S]*youtube\.description/,
+    );
+    await expect(
+      planBundle(audio, { show: 's', title: 'T', description: 'd', ytTitle: 'a <b>' }, duration),
+    ).rejects.toThrow(/< or >/);
+  });
 });
 
 describe('newBundleId', () => {
