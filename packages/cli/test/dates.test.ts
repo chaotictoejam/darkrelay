@@ -1,6 +1,6 @@
 import { EpisodeManifest } from '@darkrelay/core';
 import { describe, expect, it } from 'vitest';
-import { episodeState, parsePubDate } from '../src/dates';
+import { describeTime, episodeState, parsePubDate } from '../src/dates';
 
 const NOW = new Date('2026-10-12T12:00:00Z');
 
@@ -51,5 +51,13 @@ describe('episodeState', () => {
     expect(episodeState(ep('2026-10-12T11:59:59Z'), NOW)).toBe('live');
     expect(episodeState(ep('2026-10-12T12:00:01Z'), NOW)).toBe('scheduled');
     expect(episodeState(ep('2026-10-20T00:00:00Z', 'hidden'), NOW)).toBe('hidden');
+  });
+});
+
+describe('describeTime', () => {
+  it('shows local time with its zone, and UTC', () => {
+    expect(describeTime('2026-10-16T04:00:00.000Z')).toMatch(
+      /^Oct 16, 2026, 12:00 AM [A-Z]+[+\d:]* \(2026-10-16 04:00 UTC\)$/,
+    );
   });
 });

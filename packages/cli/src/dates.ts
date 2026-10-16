@@ -41,9 +41,13 @@ export function parsePubDate(input: string, now = new Date()): Date {
 
 export function describeTime(iso: string | Date): string {
   const d = new Date(iso);
+  // dateStyle/timeStyle can't be combined with timeZoneName, so spell the fields out.
   const local = d.toLocaleString('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
     timeZoneName: 'short',
   });
   return `${local} (${d.toISOString().slice(0, 16).replace('T', ' ')} UTC)`;
