@@ -246,9 +246,40 @@ Each nightly run covers yesterday and the day before (CloudFront logs can arrive
 npx darkrelay analytics check                     # after the first deploy: are logs readable?
 npx darkrelay analytics run                       # count yesterday now
 npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 90 days)
-npx darkrelay dashboard add-user you@example.com  # Cognito emails a temporary password
-npx darkrelay dashboard remove-user you@example.com
 ```
+
+### Dashboard access
+
+The dashboard signs people in with Cognito (no self sign-up). What each person sees and does is set per show:
+
+| Role                  | Can                                                    |
+| --------------------- | ------------------------------------------------------ |
+| `admin`               | Every show: analytics and uploads                      |
+| `uploader` (per show) | Analytics for that show, and upload new episodes to it |
+| `viewer` (per show)   | Analytics for that show                                |
+| no role               | Sign in, but see nothing                               |
+
+```bash
+npx darkrelay dashboard add-user you@example.com --role admin       # Cognito emails a temporary password
+npx darkrelay dashboard add-user host@example.com --role uploader --show my-show other-show
+npx darkrelay dashboard set-role host@example.com --role viewer --show other-show  # replaces their role for that show
+npx darkrelay dashboard set-role host@example.com --role none --show other-show    # removes that show
+npx darkrelay dashboard set-role host@example.com --role none                      # removes all access
+npx darkrelay dashboard users                                        # everyone and their roles
+npx darkrelay dashboard remove-user host@example.com
+```
+
+Roles are Cognito groups (`admin`, `uploader:<show>`, `viewer:<show>`) carried in the sign-in token, so a change applies at the person's next sign-in, or within the hour. The API checks them on every request; hiding a button in the UI is not the protection.
+
+Users created before roles existed have no role and see nothing. Delete them with `remove-user` and add them again with a role (or give them one with `set-role`).
+
+### Uploading from the dashboard
+
+Uploaders and admins get an **Upload episode** page: show, title, show notes (HTML), release time (now, or a date and time in the browser's time zone), season, episode number, type, explicit, and files (audio or a video episode, plus optional transcript, chapters, artwork and an audiogram video). It produces the same bundle as `darkrelay publish`, so publishing, video processing and YouTube uploads work the same way, and the page follows the result through to published, scheduled or rejected.
+
+The browser sends the files straight to S3 as multipart uploads, so multi-GB videos are fine and nothing needs AWS credentials. The API hands out presigned URLs for one part at a time (valid 15 minutes, only for that bundle's files under `inbox/<show>/<bundleId>/`), failed parts are retried, and **Retry** resumes from the parts already sent. The API writes `episode.json` itself, last, after checking it against the bundle schema. The episode length is read in the browser; if it can't read the file, the page asks for it.
+
+Dashboard uploads create new episodes. To change an existing episode's media or details, use `darkrelay publish --guid` for now.
 
 To run the download or YouTube pulls yourself (catch up, backfill, or check the logs are readable), see [docs/running-analytics.md](docs/running-analytics.md).
 

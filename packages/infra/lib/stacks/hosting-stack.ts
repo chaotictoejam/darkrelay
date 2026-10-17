@@ -35,6 +35,7 @@ export class HostingStack extends Stack {
     super(scope, id, props);
     const { config } = props;
 
+    // CORS (browser uploads into inbox/) is set by the dashboard stack, which knows its own URL.
     this.mediaBucket = new s3.Bucket(this, 'Media', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,

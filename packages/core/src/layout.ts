@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { AssetRef } from './model';
 
 /**
@@ -27,6 +27,12 @@ export const layout = {
   rebuildRequest: (show: string) => `requests/${show}/rebuild`,
   youtubeUpload: (show: string, episodeId: string) => `catalog/${show}/youtube/${episodeId}.json`,
 };
+
+/** Upload id for a bundle under inbox/: sortable by time, unique enough to never collide. */
+export function newBundleId(now = new Date()): string {
+  const stamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  return `${stamp}-${randomBytes(3).toString('hex')}`;
+}
 
 /** Stable, path-safe id for an episode, derived from its RSS guid. */
 export function episodeId(guid: string): string {

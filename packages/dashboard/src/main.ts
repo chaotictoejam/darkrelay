@@ -1,6 +1,7 @@
 import {
   get,
   type EpisodeResponse,
+  type MeResponse,
   type SeriesResponse,
   type ShowResponse,
   type ShowsResponse,
@@ -17,9 +18,14 @@ import {
   shortDate,
   topEntries,
 } from './format';
+import { uploadView } from './upload';
 
 const app = document.getElementById('app')!;
 const RANGES = [7, 30, 90, 365];
+
+/** The user's roles, fetched once per page load. */
+let mePromise: Promise<MeResponse> | undefined;
+const me = (config: RuntimeConfig) => (mePromise ??= get<MeResponse>(config, '/me'));
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) {
   const e = document.createElement(tag);
@@ -156,7 +162,18 @@ function serverNote(n: number) {
 }
 
 async function showList(config: RuntimeConfig) {
-  const data = await get<ShowsResponse>(config, '/shows');
+  const [data, roles] = await Promise.all([get<ShowsResponse>(config, '/shows'), me(config)]);
+  if (!roles.admin && !roles.view?.length) {
+    app.replaceChildren(
+      el('h1', 'Shows'),
+      el(
+        'p',
+        "You don't have access to any shows yet. Ask an admin to give you a role for your show.",
+        'muted',
+      ),
+    );
+    return;
+  }
   if (data.shows.length === 1) {
     location.replace(`#/s/${data.shows[0]!.show}`);
     return;
@@ -182,6 +199,16 @@ async function showList(config: RuntimeConfig) {
 async function showView(config: RuntimeConfig, show: string, days: number) {
   const data = await get<ShowResponse>(config, `/shows/${show}?${rangeQuery(days)}`);
   const title = el('h1', show);
+  const heading = el('div', undefined, 'heading');
+  heading.append(title);
+  me(config)
+    .then((roles) => {
+      if (!roles.upload.some((s) => s.show === show)) return;
+      const up = link(`#/upload/${show}`, 'Upload episode');
+      up.className = 'button';
+      heading.append(up);
+    })
+    .catch(() => {});
   get<ShowsResponse>(config, '/shows')
     .then((s) => (title.textContent = s.shows.find((x) => x.show === show)?.title ?? show))
     .catch(() => {});
@@ -223,7 +250,7 @@ async function showView(config: RuntimeConfig, show: string, days: number) {
   }
 
   app.replaceChildren(
-    title,
+    heading,
     rangeControl(`#/s/${show}`, days),
     stats,
     trend(data),
@@ -269,7 +296,8 @@ async function render(config: RuntimeConfig) {
   const { parts, days } = parseHash();
   app.classList.add('loading');
   try {
-    if (parts[0] === 's' && parts[1] && parts[2] === 'e' && parts[3])
+    if (parts[0] === 'upload') await uploadView(app, config, parts[1]);
+    else if (parts[0] === 's' && parts[1] && parts[2] === 'e' && parts[3])
       await episodeView(config, parts[1], parts[3], days);
     else if (parts[0] === 's' && parts[1]) await showView(config, parts[1], days);
     else await showList(config);
@@ -294,6 +322,11 @@ async function start() {
   const out = document.getElementById('signout')!;
   out.hidden = false;
   out.addEventListener('click', () => signOut(config));
+  me(config)
+    .then((roles) => {
+      if (roles.upload.length) document.getElementById('upload')!.hidden = false;
+    })
+    .catch(() => {});
   window.addEventListener('hashchange', () => render(config));
   freshness(config).catch(() => {});
   await render(config);

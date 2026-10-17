@@ -13,28 +13,35 @@ import {
   aws_cloudfront_origins as origins,
   aws_cognito as cognito,
   aws_dynamodb as dynamodb,
+  aws_iam as iam,
   aws_s3 as s3,
   aws_s3_deployment as s3deploy,
+  custom_resources as cr,
 } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
+import { ADMIN_GROUP } from '@darkrelay/core';
 import type { DeploymentConfig } from '../config';
 import { REPO_ROOT, nodeFunction } from '../lambda';
 
 export interface DashboardStackProps extends StackProps {
   config: DeploymentConfig;
   table: dynamodb.ITable;
+  mediaBucket: s3.IBucket;
 }
 
 const DIST = resolve(REPO_ROOT, 'packages/dashboard/dist');
 
 /**
  * The dashboard: a static site, Cognito sign-in (no self sign-up), and an
- * HTTP API whose Lambda reads pre-aggregated DynamoDB items only.
+ * HTTP API. One Lambda reads pre-aggregated DynamoDB items only; another
+ * hands uploaders presigned URLs into the media bucket's inbox, so episode
+ * bytes go straight from the browser to S3. Cognito groups decide who sees
+ * and uploads what: `admin`, or `viewer:<show>` / `uploader:<show>`.
  */
 export class DashboardStack extends Stack {
   constructor(scope: Construct, id: string, props: DashboardStackProps) {
     super(scope, id, props);
-    const { config, table } = props;
+    const { config, table, mediaBucket } = props;
 
     const site = new s3.Bucket(this, 'Site', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -81,6 +88,12 @@ export class DashboardStack extends Stack {
       refreshTokenValidity: Duration.days(30),
       preventUserExistenceErrors: true,
     });
+    // Per-show groups are created by the CLI when someone is first given a role for that show.
+    new cognito.CfnUserPoolGroup(this, 'AdminGroup', {
+      userPoolId: userPool.userPoolId,
+      groupName: ADMIN_GROUP,
+      description: 'Every show: analytics and uploads',
+    });
 
     const reader = nodeFunction(this, 'Api', {
       entry: 'analytics/api-handler.ts',
@@ -90,11 +103,66 @@ export class DashboardStack extends Stack {
     });
     table.grantReadData(reader);
 
+    const uploads = nodeFunction(this, 'Uploads', {
+      entry: 'uploads/handler.ts',
+      memorySize: 256,
+      timeout: Duration.seconds(15),
+      environment: { BUCKET_NAME: mediaBucket.bucketName },
+    });
+    // Writes only into the inbox; reads only what the upload flow needs.
+    // Listing lets a missing key read as 404 rather than 403.
+    mediaBucket.grantPut(uploads, 'inbox/*');
+    mediaBucket.grantRead(uploads, 'inbox/*');
+    mediaBucket.grantRead(uploads, 'inbox-status/*');
+    mediaBucket.grantRead(uploads, 'catalog/*/show.json');
+    uploads.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [mediaBucket.bucketArn] }),
+    );
+
+    const allowedOrigins = [siteUrl, 'http://localhost:5173'];
+    // The browser PUTs parts to presigned URLs and needs each part's ETag back.
+    // Set from here because the bucket's stack can't know the dashboard URL.
+    const cors = {
+      service: 'S3',
+      action: 'putBucketCors',
+      parameters: {
+        Bucket: mediaBucket.bucketName,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedMethods: ['PUT'],
+              AllowedOrigins: allowedOrigins,
+              AllowedHeaders: ['content-type'],
+              ExposeHeaders: ['ETag'],
+              MaxAgeSeconds: 3600,
+            },
+          ],
+        },
+      },
+      physicalResourceId: cr.PhysicalResourceId.of(`${mediaBucket.bucketName}-cors`),
+    };
+    new cr.AwsCustomResource(this, 'MediaBucketCors', {
+      onCreate: cors,
+      onUpdate: cors,
+      onDelete: {
+        service: 'S3',
+        action: 'deleteBucketCors',
+        parameters: { Bucket: mediaBucket.bucketName },
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ['s3:PutBucketCORS'],
+          resources: [mediaBucket.bucketArn],
+        }),
+      ]),
+      installLatestAwsSdk: false,
+    });
+
     const api = new apigw.HttpApi(this, 'HttpApi', {
       corsPreflight: {
-        allowOrigins: [siteUrl, 'http://localhost:5173'],
-        allowMethods: [apigw.CorsHttpMethod.GET],
-        allowHeaders: ['authorization'],
+        allowOrigins: allowedOrigins,
+        allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST],
+        allowHeaders: ['authorization', 'content-type'],
         maxAge: Duration.hours(1),
       },
     });
@@ -115,6 +183,15 @@ export class DashboardStack extends Stack {
       integration: new integrations.HttpLambdaIntegration('ReadShows', reader),
       authorizer,
     });
+    const upload = new integrations.HttpLambdaIntegration('Upload', uploads);
+    for (const [path, method] of [
+      ['/me', apigw.HttpMethod.GET],
+      ['/shows/{show}/uploads', apigw.HttpMethod.POST],
+      ['/shows/{show}/uploads/{bundleId}', apigw.HttpMethod.GET],
+      ['/shows/{show}/uploads/{bundleId}/{action}', apigw.HttpMethod.POST],
+    ] as const) {
+      api.addRoutes({ path, methods: [method], integration: upload, authorizer });
+    }
 
     const runtimeConfig = {
       apiUrl: api.apiEndpoint,

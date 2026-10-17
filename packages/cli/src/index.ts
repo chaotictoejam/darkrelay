@@ -1,12 +1,14 @@
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
 import { listEpisodes, rescheduleEpisode, setEpisodeStatus } from './commands/episode';
+import { checkAnalytics, runAnalytics } from './commands/analytics';
 import {
+  ROLES,
   addDashboardUser,
-  checkAnalytics,
+  listDashboardUsers,
   removeDashboardUser,
-  runAnalytics,
-} from './commands/analytics';
+  setDashboardRole,
+} from './commands/dashboard';
 import { cutover } from './commands/cutover';
 import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
@@ -179,11 +181,39 @@ analytics
   .description('Check that CloudFront logs are landing and Athena can read them')
   .action(() => checkAnalytics(g()));
 
-const dashboard = program.command('dashboard').description('Dashboard access');
+const dashboard = program
+  .command('dashboard')
+  .description('Dashboard access')
+  .addHelpText(
+    'after',
+    `
+Roles:
+  admin      every show: analytics and uploads
+  uploader   analytics and uploads for the --show shows
+  viewer     analytics only, for the --show shows
+  none       remove the --show shows, or with no --show, all access
+Users with no role can sign in but see nothing.`,
+  );
+const roleOption = () =>
+  new Option('--role <role>', 'admin, uploader, viewer or none')
+    .choices(ROLES)
+    .makeOptionMandatory();
 dashboard
   .command('add-user <email>')
   .description('Invite someone to the dashboard (Cognito emails a temporary password)')
-  .action((email) => addDashboardUser(email, g()));
+  .addOption(roleOption())
+  .option('--show <slug...>', 'shows the role applies to (viewer, uploader)')
+  .action((email, o) => addDashboardUser(email, o, g()));
+dashboard
+  .command('set-role <email>')
+  .description("Change someone's access, e.g. --role uploader --show my-show")
+  .addOption(roleOption())
+  .option('--show <slug...>', 'shows the role applies to')
+  .action((email, o) => setDashboardRole(email, o, g()));
+dashboard
+  .command('users')
+  .description('List dashboard users and their roles')
+  .action(() => listDashboardUsers(g()));
 dashboard
   .command('remove-user <email>')
   .description('Remove someone from the dashboard')

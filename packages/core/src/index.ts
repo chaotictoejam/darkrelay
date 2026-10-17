@@ -1,3 +1,4 @@
+export * from './access';
 export * from './bundle';
 export * from './guid';
 export * from './layout';

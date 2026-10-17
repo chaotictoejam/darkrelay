@@ -1,4 +1,5 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { accessFromGroups, groupsClaim } from '@darkrelay/core';
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { doc, queryAll } from './dynamo';
 import { route, type Query } from './api';
@@ -35,8 +36,13 @@ const query: Query = async (pk, sk) => {
   });
 };
 
-export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
-  const res = await route(query, event.rawPath, event.queryStringParameters ?? {});
+export async function handler(
+  event: APIGatewayProxyEventV2WithJWTAuthorizer,
+): Promise<APIGatewayProxyResultV2> {
+  const access = accessFromGroups(
+    groupsClaim(event.requestContext.authorizer.jwt.claims['cognito:groups']),
+  );
+  const res = await route(query, event.rawPath, event.queryStringParameters ?? {}, access);
   return {
     statusCode: res.statusCode,
     headers: { 'content-type': 'application/json', 'cache-control': 'private, max-age=60' },
