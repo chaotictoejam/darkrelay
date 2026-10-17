@@ -25,6 +25,8 @@ export const EpisodeInput = z.object({
   transcriptLanguage: z.string().optional(),
   /** YouTube's own title and description. Absent: YouTube gets the feed's. */
   youtube: YouTubeCopy.optional(),
+  /** Hide the episode from the feed, or put it back. Absent: unchanged (new episodes are published). */
+  status: z.enum(['published', 'hidden']).optional(),
 });
 export type EpisodeInput = z.infer<typeof EpisodeInput>;
 export type EpisodeInputRaw = z.input<typeof EpisodeInput>;
@@ -70,9 +72,12 @@ const TRANSCRIPT_TYPES: Record<string, string> = {
   'transcript.json': 'application/json',
 };
 
+export const NO_MEDIA_ERROR = 'Bundle has no audio (audio.mp3, audio.m4a) or video (video.mp4)';
+
 /**
  * Sorts bundle file names into roles. `episode.json` and `processed.json` are
- * expected and skipped. A bundle needs audio, or video to extract audio from.
+ * expected and skipped. A new episode needs audio, or video to extract audio
+ * from; an update to an existing one may leave its media out.
  */
 export function classifyBundle(names: string[]): ClassifyResult {
   const files: BundleFiles = { transcripts: [] };
@@ -99,8 +104,7 @@ export function classifyBundle(names: string[]): ClassifyResult {
       files.transcripts.push({ file: name, type: TRANSCRIPT_TYPES[lower] });
     else ignored.push(name);
   }
-  if (!files.audio && !files.video)
-    errors.push('Bundle has no audio (audio.mp3, audio.m4a) or video (video.mp4)');
+  if (!files.audio && !files.video) errors.push(NO_MEDIA_ERROR);
   return { files, errors, ignored };
 }
 

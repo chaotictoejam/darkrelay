@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bytes, localToIso, partRanges, planFiles } from '../src/upload-plan';
+import { bytes, isoToLocal, localToIso, partRanges, planFiles } from '../src/upload-plan';
 
 const f = (name: string, size = 10) => ({ name, size });
 
@@ -43,6 +43,27 @@ describe('planFiles', () => {
       { slot: 'audiogram', file: f('gram.mp4') },
     ]);
     expect(errors).toEqual(['A video episode already has its video; leave out the audiogram.']);
+  });
+});
+
+describe('planFiles for an update', () => {
+  it('allows leaving out the media', () => {
+    expect(planFiles([], { update: true })).toEqual({ files: [], errors: [] });
+    expect(planFiles([{ slot: 'transcript', file: f('t.vtt') }], { update: true }).errors).toEqual(
+      [],
+    );
+  });
+
+  it('refuses an audiogram without its audio', () => {
+    expect(planFiles([{ slot: 'audiogram', file: f('g.mp4') }], { update: true }).errors).toEqual([
+      'To replace the audiogram, choose the audio file again too.',
+    ]);
+  });
+});
+
+describe('isoToLocal', () => {
+  it('round-trips with localToIso', () => {
+    expect(isoToLocal(localToIso('2026-10-20T09:05')!)).toBe('2026-10-20T09:05');
   });
 });
 

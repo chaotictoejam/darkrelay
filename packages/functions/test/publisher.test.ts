@@ -150,6 +150,57 @@ describe('publishing a bundle', () => {
     expect(xml).toContain('<pubDate>Sun, 11 Oct 2026 12:00:00 GMT</pubDate>');
   });
 
+  it('updates an existing episode from a bundle without media, keeping its files', async () => {
+    await upload('b1', {
+      'audio.mp3': 'x',
+      'transcript.vtt': 'WEBVTT',
+      'chapters.json': JSON.stringify({ version: '1.2.0', chapters: [{ startTime: 0 }] }),
+      'cover.jpg': 'img',
+      'episode.json': episodeJson(),
+    });
+    const key = (await store.list(layout.episodesPrefix('show')))[0]!.key;
+    const before = store.json(key);
+
+    const result = await upload('b2', { 'episode.json': episodeJson({ title: 'Renamed' }) });
+    expect(result).toMatchObject({ status: 'published', guid: 'guid-1' });
+    const after = store.json(key);
+    expect(after.title).toBe('Renamed');
+    for (const field of ['enclosure', 'transcripts', 'chapters', 'image'])
+      expect(after[field]).toEqual(before[field]);
+    expect(store.text(feedKey)).toContain('Renamed');
+  });
+
+  it('replaces only the files a bundle carries', async () => {
+    await upload('b1', {
+      'audio.mp3': 'x',
+      'transcript.vtt': 'WEBVTT',
+      'episode.json': episodeJson(),
+    });
+    await upload('b2', { 'transcript.srt': '1', 'episode.json': episodeJson() });
+    const key = (await store.list(layout.episodesPrefix('show')))[0]!.key;
+    const m = store.json(key);
+    expect(m.enclosure.asset.key).toContain('/b1/audio.mp3');
+    expect(m.transcripts).toEqual([
+      expect.objectContaining({ asset: { key: expect.stringContaining('/b2/transcript.srt') } }),
+    ]);
+  });
+
+  it('still needs media for a new episode', async () => {
+    const result = await upload('b1', { 'episode.json': episodeJson({ guid: 'brand-new' }) });
+    expect(result).toMatchObject({ status: 'rejected' });
+    expect(await store.list(layout.episodesPrefix('show'))).toEqual([]);
+  });
+
+  it('hides and restores an episode from episode.json', async () => {
+    await upload('b1', { 'audio.mp3': 'x', 'episode.json': episodeJson() });
+    await upload('b2', { 'episode.json': episodeJson({ status: 'hidden' }) });
+    expect(feedGuids()).toEqual([]);
+    await upload('b3', { 'episode.json': episodeJson() });
+    expect(feedGuids()).toEqual([]);
+    await upload('b4', { 'episode.json': episodeJson({ status: 'published' }) });
+    expect(feedGuids()).toEqual(['guid-1']);
+  });
+
   it('re-publishing keeps the YouTube link and copy; an empty youtube object clears the copy', async () => {
     await upload('b1', {
       'audio.mp3': 'x',

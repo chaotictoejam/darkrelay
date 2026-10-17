@@ -386,6 +386,11 @@ td.num,
   gap: 1rem;
   flex-wrap: wrap;
 }
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 .button,
 button.primary {
   display: inline-block;
@@ -508,4 +513,34 @@ fieldset.field {
 }
 .upload-status p {
   margin: 0.5rem 0;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--hairline);
+}
+.catalog td:nth-child(2) {
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  color: var(--text-secondary);
+}
+.badge.live {
+  color: var(--ok);
+  border-color: currentColor;
+}
+.badge.scheduled {
+  color: var(--series-1);
+  border-color: currentColor;
+}
+.confirm {
+  color: var(--danger);
 }

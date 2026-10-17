@@ -18,7 +18,7 @@ import {
   shortDate,
   topEntries,
 } from './format';
-import { uploadView } from './upload';
+import { editView, manageView, uploadView } from './upload';
 
 const app = document.getElementById('app')!;
 const RANGES = [7, 30, 90, 365];
@@ -204,9 +204,13 @@ async function showView(config: RuntimeConfig, show: string, days: number) {
   me(config)
     .then((roles) => {
       if (!roles.upload.some((s) => s.show === show)) return;
+      const actions = el('div', undefined, 'actions');
+      const manage = link(`#/manage/${show}`, 'Manage episodes');
+      manage.className = 'button secondary';
       const up = link(`#/upload/${show}`, 'Upload episode');
       up.className = 'button';
-      heading.append(up);
+      actions.append(manage, up);
+      heading.append(actions);
     })
     .catch(() => {});
   get<ShowsResponse>(config, '/shows')
@@ -297,6 +301,9 @@ async function render(config: RuntimeConfig) {
   app.classList.add('loading');
   try {
     if (parts[0] === 'upload') await uploadView(app, config, parts[1]);
+    else if (parts[0] === 'manage' && parts[1]) await manageView(app, config, parts[1]);
+    else if (parts[0] === 'edit' && parts[1] && parts[2])
+      await editView(app, config, parts[1], parts[2]);
     else if (parts[0] === 's' && parts[1] && parts[2] === 'e' && parts[3])
       await episodeView(config, parts[1], parts[3], days);
     else if (parts[0] === 's' && parts[1]) await showView(config, parts[1], days);

@@ -72,6 +72,43 @@ export interface UploadStatus {
   feedErrors?: unknown;
 }
 
+export type EpisodeState = 'live' | 'scheduled' | 'hidden';
+
+export interface CatalogResponse {
+  show: string;
+  episodes: {
+    episodeId: string;
+    title: string;
+    pubDate: string;
+    state: EpisodeState;
+    season?: number;
+    episode?: number;
+  }[];
+}
+
+/** An existing episode, as the edit form needs it. */
+export interface EpisodeDetails {
+  episodeId: string;
+  title: string;
+  description: string;
+  pubDate: string;
+  state: EpisodeState;
+  status: 'published' | 'hidden';
+  durationSeconds?: number;
+  season?: number;
+  episode?: number;
+  episodeType: 'full' | 'trailer' | 'bonus';
+  explicit: boolean;
+  files: {
+    audio: string;
+    video: boolean;
+    transcripts: string[];
+    chapters: boolean;
+    cover: boolean;
+  };
+  youtube?: { videoId: string };
+}
+
 export async function get<T>(config: RuntimeConfig, path: string): Promise<T> {
   return request<T>(config, 'GET', path);
 }

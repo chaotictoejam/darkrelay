@@ -358,6 +358,8 @@ describe('dashboard', () => {
       'GET /me',
       'GET /shows',
       'GET /shows/{proxy+}',
+      'GET /shows/{show}/catalog',
+      'GET /shows/{show}/catalog/{episodeId}',
       'GET /shows/{show}/uploads/{bundleId}',
       'POST /shows/{show}/uploads',
       'POST /shows/{show}/uploads/{bundleId}/{action}',
@@ -390,7 +392,7 @@ describe('dashboard', () => {
       JSON.stringify(st['Action']).includes('GetObject'),
     )) {
       expect(JSON.stringify(st['Resource'])).toMatch(
-        /\/(inbox\/\*|inbox-status\/\*|catalog\/\*\/show\.json)"/,
+        /\/(inbox\/\*|inbox-status\/\*|catalog\/\*\/(show\.json|episodes\/\*))"/,
       );
     }
   });

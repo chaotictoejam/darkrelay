@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EpisodeInput, accessFromGroups, type Access } from '@darkrelay/core';
+import { EpisodeInput, accessFromGroups, episodeId, layout, type Access } from '@darkrelay/core';
 import { MAX_FILE_BYTES, partSize, route, type UploadDeps } from '../src/uploads/api';
 import { MemoryStore } from './memory-store';
 
 const BUNDLE = '20261017120000-abcdef';
 const PREFIX = `inbox/cc/${BUNDLE}/`;
 const MiB = 1024 ** 2;
+const NOW = new Date('2026-10-17T12:00:00Z');
 
 let store: MemoryStore;
 let deps: UploadDeps;
@@ -35,6 +36,7 @@ beforeEach(() => {
     listShows: async () => ['cc', 'dd'],
     newBundleId: () => BUNDLE,
     newGuid: () => 'guid-1',
+    now: () => NOW,
   };
 });
 
@@ -286,5 +288,165 @@ describe('status', () => {
       JSON.stringify({ status: 'rejected', errors: ['bad'] }),
     );
     expect((await get()).body).toEqual({ bundleId: BUNDLE, status: 'rejected', errors: ['bad'] });
+  });
+});
+
+describe('updating an episode', () => {
+  const ID = episodeId('old-guid');
+  const manifest = (o: Record<string, unknown> = {}) => ({
+    schemaVersion: 1,
+    guid: 'old-guid',
+    status: 'published',
+    title: 'Old title',
+    description: '<p>Old</p>',
+    link: 'https://example.com/ep1',
+    pubDate: '2026-10-01T09:00:00Z',
+    durationSeconds: 1800,
+    episodeType: 'full',
+    season: 1,
+    episode: 3,
+    enclosure: { asset: { key: 'cc/x/b/audio.mp3' }, length: 10, type: 'audio/mpeg' },
+    transcripts: [{ asset: { key: 'cc/x/b/t.vtt' }, type: 'text/vtt', language: 'fr' }],
+    persons: [{ name: 'Guest' }],
+    keywords: ['kw'],
+    updatedAt: '2026-10-01T09:00:00Z',
+    ...o,
+  });
+  beforeEach(() => {
+    store.seed(layout.episodeManifest('cc', ID), JSON.stringify(manifest()));
+    store.seed(
+      layout.episodeManifest('cc', episodeId('later')),
+      JSON.stringify(manifest({ guid: 'later', title: 'Next', pubDate: '2026-10-30T09:00:00Z' })),
+    );
+  });
+
+  it('lists every episode with its state, newest first, for uploaders only', async () => {
+    store.seed(
+      layout.episodeManifest('cc', episodeId('gone')),
+      JSON.stringify(
+        manifest({
+          guid: 'gone',
+          title: 'Gone',
+          status: 'hidden',
+          pubDate: '2026-09-01T09:00:00Z',
+        }),
+      ),
+    );
+    const res = await call('GET', '/shows/cc/catalog');
+    expect(res.statusCode).toBe(200);
+    const list = (res.body as { episodes: { title: string; state: string }[] }).episodes;
+    expect(list.map((e) => [e.title, e.state])).toEqual([
+      ['Next', 'scheduled'],
+      ['Old title', 'live'],
+      ['Gone', 'hidden'],
+    ]);
+    expect(
+      (await call('GET', '/shows/cc/catalog', undefined, accessFromGroups(['viewer:cc'])))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await call('GET', `/shows/cc/catalog/${ID}`, undefined, accessFromGroups(['uploader:dd'])))
+        .statusCode,
+    ).toBe(403);
+  });
+
+  it('returns the details and files of one episode', async () => {
+    const res = await call('GET', `/shows/cc/catalog/${ID}`);
+    expect(res.body).toMatchObject({
+      episodeId: ID,
+      title: 'Old title',
+      state: 'live',
+      season: 1,
+      files: { audio: 'audio/mpeg', transcripts: ['text/vtt'], chapters: false, cover: false },
+    });
+    expect((await call('GET', '/shows/cc/catalog/0000000000000000')).statusCode).toBe(404);
+    expect((await call('GET', '/shows/cc/catalog/nope')).statusCode).toBe(400);
+  });
+
+  it('updates details with no files, keeping the length and fields the form lacks', async () => {
+    const created = await call('POST', '/shows/cc/uploads', { files: [], episodeId: ID });
+    expect(created).toEqual({ statusCode: 201, body: { bundleId: BUNDLE, files: [] } });
+    const res = await call('POST', `/shows/cc/uploads/${BUNDLE}/complete`, {
+      episodeId: ID,
+      title: 'New title',
+      description: '<p>New</p>',
+      pubDate: '2026-10-01T09:00:00Z',
+      season: 1,
+      episodeType: 'bonus',
+      status: 'hidden',
+    });
+    expect(res.statusCode).toBe(202);
+    expect(store.json(`${PREFIX}episode.json`)).toEqual(
+      EpisodeInput.parse({
+        schemaVersion: 1,
+        show: 'cc',
+        guid: 'old-guid',
+        title: 'New title',
+        description: '<p>New</p>',
+        link: 'https://example.com/ep1',
+        pubDate: '2026-10-01T09:00:00Z',
+        durationSeconds: 1800,
+        season: 1,
+        episodeType: 'bonus',
+        persons: [{ name: 'Guest' }],
+        keywords: ['kw'],
+        transcriptLanguage: 'fr',
+        status: 'hidden',
+      }),
+    );
+  });
+
+  it('replaces one file without the media, and takes a new length with new media', async () => {
+    const created = await call('POST', '/shows/cc/uploads', {
+      files: [{ name: 'transcript.srt', size: 5 }],
+      episodeId: ID,
+    });
+    expect(created.statusCode).toBe(201);
+    store.seed(`${PREFIX}transcript.srt`, '1');
+    store.seed(`${PREFIX}audio.mp3`, 'new');
+    const res = await call('POST', `/shows/cc/uploads/${BUNDLE}/complete`, {
+      episodeId: ID,
+      title: 'T',
+      description: 'D',
+      durationSeconds: 99.6,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(store.json(`${PREFIX}episode.json`).durationSeconds).toBe(100);
+  });
+
+  it('still needs media for a new episode, and a real episode for an update', async () => {
+    expect((await call('POST', '/shows/cc/uploads', { files: [] })).statusCode).toBe(400);
+    const missing = await call('POST', '/shows/cc/uploads', {
+      files: [],
+      episodeId: '0000000000000000',
+    });
+    expect(missing.statusCode).toBe(404);
+    const complete = await call('POST', `/shows/cc/uploads/${BUNDLE}/complete`, {
+      title: 'T',
+      description: 'D',
+      durationSeconds: 10,
+    });
+    expect(complete.statusCode).toBe(404);
+  });
+
+  it('asks before moving a released episode into the future, but not a scheduled one', async () => {
+    const body = { episodeId: ID, title: 'T', description: 'D', pubDate: '2026-11-01T09:00:00Z' };
+    const res = await call('POST', `/shows/cc/uploads/${BUNDLE}/complete`, body);
+    expect(res.statusCode).toBe(409);
+    expect((res.body as { error: string }).error).toMatch(/already out/);
+    expect(store.text(`${PREFIX}episode.json`)).toBeUndefined();
+    const forced = await call('POST', `/shows/cc/uploads/${BUNDLE}/complete`, {
+      ...body,
+      force: true,
+    });
+    expect(forced.statusCode).toBe(202);
+
+    store.delete([`${PREFIX}episode.json`]);
+    const later = await call('POST', `/shows/cc/uploads/${BUNDLE}/complete`, {
+      ...body,
+      episodeId: episodeId('later'),
+      pubDate: '2026-11-02T09:00:00Z',
+    });
+    expect(later.statusCode).toBe(202);
   });
 });

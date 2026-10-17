@@ -1,5 +1,7 @@
 import {
   EpisodeInput,
+  EpisodeManifest,
+  NO_MEDIA_ERROR,
   PROCESSED_FILE,
   SLUG,
   canUpload,
@@ -35,6 +37,7 @@ export interface UploadDeps {
   listShows(): Promise<string[]>;
   newBundleId(): string;
   newGuid(): string;
+  now(): Date;
 }
 
 export interface UploadRequest {
@@ -52,6 +55,7 @@ const MAX_PARTS = 10_000;
 export const SIGN_BATCH = 100;
 
 const BUNDLE_ID = /^\d{14}-[0-9a-f]{6}$/;
+const EPISODE_ID = /^[0-9a-f]{16}$/;
 /** The publisher's own files; a browser upload must never write them. */
 const RESERVED = new Set(['episode.json', PROCESSED_FILE]);
 
@@ -76,8 +80,9 @@ const CreateBody = z.object({
         size: z.number().int().nonnegative().max(MAX_FILE_BYTES),
       }),
     )
-    .min(1)
     .max(10),
+  /** Set to update this existing episode: media may then be left out. */
+  episodeId: z.string().regex(EPISODE_ID).optional(),
 });
 
 const SignBody = z.object({
@@ -99,10 +104,16 @@ const FileDoneBody = z.object({
 
 /** The form fields. The rest of episode.json is filled in here. */
 const CompleteBody = z.object({
+  /** Set to update this existing episode instead of creating one. */
+  episodeId: z.string().regex(EPISODE_ID).optional(),
   title: z.string(),
   description: z.string(),
   pubDate: z.string().optional(),
-  durationSeconds: z.number(),
+  /** Required for new media; an update without it keeps the episode's length. */
+  durationSeconds: z.number().optional(),
+  status: z.enum(['published', 'hidden']).optional(),
+  /** Confirms moving an episode that is already out back into the future. */
+  force: z.boolean().optional(),
   season: z.number().optional(),
   episode: z.number().optional(),
   episodeType: z.enum(['full', 'trailer', 'bonus']).optional(),
@@ -137,12 +148,23 @@ export async function route(deps: UploadDeps, req: UploadRequest): Promise<ApiRe
   const parts = req.path.split('/').filter(Boolean);
   if (req.method === 'GET' && parts.length === 1 && parts[0] === 'me') return me(deps, req.access);
 
-  if (parts[0] !== 'shows' || parts[2] !== 'uploads') return error(404, 'Not found');
+  if (parts[0] !== 'shows' || (parts[2] !== 'uploads' && parts[2] !== 'catalog'))
+    return error(404, 'Not found');
   const show = parts[1]!;
   if (!SLUG.test(show)) return error(400, 'Bad show');
   if (!canUpload(req.access, show)) return FORBIDDEN;
   if (!(await deps.store.head(layout.showConfig(show))))
     return error(404, `Show "${show}" does not exist`);
+
+  if (parts[2] === 'catalog' && req.method === 'GET') {
+    if (parts.length === 3) return listEpisodes(deps, show);
+    if (parts.length === 4) {
+      if (!EPISODE_ID.test(parts[3]!)) return error(400, 'Bad episode');
+      return episodeDetails(deps, show, parts[3]!);
+    }
+    return error(404, 'Not found');
+  }
+  if (parts[2] !== 'uploads') return error(404, 'Not found');
 
   if (parts.length === 3 && req.method === 'POST') return create(deps, show, req.body);
 
@@ -181,13 +203,84 @@ async function me(deps: UploadDeps, access: Access): Promise<ApiResponse> {
   };
 }
 
+async function loadEpisode(deps: UploadDeps, show: string, id: string) {
+  const raw = await deps.store.getText(layout.episodeManifest(show, id));
+  return raw ? EpisodeManifest.parse(JSON.parse(raw)) : undefined;
+}
+
+type EpisodeState = 'live' | 'scheduled' | 'hidden';
+function stateOf(e: EpisodeManifest, now: Date): EpisodeState {
+  if (e.status === 'hidden') return 'hidden';
+  return Date.parse(e.pubDate) > now.getTime() ? 'scheduled' : 'live';
+}
+
+/** Every episode in the catalog, including scheduled and hidden ones, newest first. */
+async function listEpisodes(deps: UploadDeps, show: string): Promise<ApiResponse> {
+  const now = deps.now();
+  const keys = (await deps.store.list(layout.episodesPrefix(show)))
+    .map((o) => o.key)
+    .filter(
+      (k) => k.endsWith('.json') && !k.slice(layout.episodesPrefix(show).length).includes('/'),
+    );
+  const episodes = await Promise.all(
+    keys.map(async (key) => {
+      const e = EpisodeManifest.parse(JSON.parse((await deps.store.getText(key))!));
+      return {
+        episodeId: key.slice(layout.episodesPrefix(show).length, -'.json'.length),
+        title: e.title,
+        pubDate: e.pubDate,
+        state: stateOf(e, now),
+        season: e.season,
+        episode: e.episode,
+      };
+    }),
+  );
+  episodes.sort((a, b) => b.pubDate.localeCompare(a.pubDate));
+  return { statusCode: 200, body: { show, episodes } };
+}
+
+/** What the edit form needs: the details, and which files the episode has. */
+async function episodeDetails(deps: UploadDeps, show: string, id: string): Promise<ApiResponse> {
+  const e = await loadEpisode(deps, show, id);
+  if (!e) return error(404, 'No such episode');
+  return {
+    statusCode: 200,
+    body: {
+      episodeId: id,
+      title: e.title,
+      description: e.description,
+      pubDate: e.pubDate,
+      state: stateOf(e, deps.now()),
+      status: e.status,
+      durationSeconds: e.durationSeconds,
+      season: e.season,
+      episode: e.episode,
+      episodeType: e.episodeType,
+      explicit: e.explicit ?? false,
+      files: {
+        audio: e.enclosure.type,
+        video: e.video !== undefined,
+        transcripts: e.transcripts.map((t) => t.type),
+        chapters: e.chapters !== undefined,
+        cover: e.image !== undefined,
+      },
+      youtube: e.youtube ? { videoId: e.youtube.videoId } : undefined,
+    },
+  };
+}
+
 async function create(deps: UploadDeps, show: string, body: unknown): Promise<ApiResponse> {
   const input = parse(CreateBody, body);
   if (isResponse(input)) return input;
+  if (input.episodeId && !(await loadEpisode(deps, show, input.episodeId)))
+    return error(404, 'No such episode');
   const names = input.files.map((f) => f.name);
   const errors = names.map(badName).filter((e) => e !== undefined);
   if (new Set(names).size !== names.length) errors.push('The same file name appears twice');
-  if (!errors.length) errors.push(...classifyBundle(names).errors);
+  if (!errors.length)
+    errors.push(
+      ...classifyBundle(names).errors.filter((e) => !(input.episodeId && e === NO_MEDIA_ERROR)),
+    );
   if (errors.length) return error(400, errors);
 
   const bundleId = deps.newBundleId();
@@ -251,6 +344,10 @@ async function fileDone(
  * Writes episode.json from the form, which hands the bundle to the
  * publisher exactly as a CLI upload does. Validated against the bundle
  * schema here so mistakes come back to the form, not the status page.
+ *
+ * An update carries the episode's guid, so the publisher replaces only what
+ * the bundle holds. Fields the form doesn't show (people, keywords, link)
+ * are copied from the episode so they survive.
  */
 async function complete(
   deps: UploadDeps,
@@ -260,25 +357,50 @@ async function complete(
 ): Promise<ApiResponse> {
   const form = parse(CompleteBody, body);
   if (isResponse(form)) return form;
+  const previous = form.episodeId ? await loadEpisode(deps, show, form.episodeId) : undefined;
+  if (form.episodeId && !previous) return error(404, 'No such episode');
   const prefix = layout.inboxPrefix(show, bundleId);
   const names = (await deps.store.list(prefix)).map((o) => o.key.slice(prefix.length));
   if (names.includes('episode.json')) return error(409, 'This upload is already submitted');
-  if (!names.length) return error(404, 'No files uploaded for this upload id');
-  const { errors } = classifyBundle(names);
+  if (!names.length && !previous) return error(404, 'No files uploaded for this upload id');
+  const errors = classifyBundle(names).errors.filter((e) => !(previous && e === NO_MEDIA_ERROR));
   if (errors.length) return error(400, errors);
+
+  const duration = form.durationSeconds ?? previous?.durationSeconds;
+  if (!duration) return error(400, "durationSeconds: add the episode's length");
+
+  const now = deps.now();
+  const pubDate = form.pubDate || undefined;
+  if (
+    previous &&
+    pubDate &&
+    !form.force &&
+    stateOf(previous, now) === 'live' &&
+    Date.parse(pubDate) > now.getTime()
+  ) {
+    return error(
+      409,
+      `"${previous.title}" is already out. Moving it to the future removes it from the feed until then; confirm to do that.`,
+    );
+  }
 
   const raw: EpisodeInputRaw = {
     schemaVersion: 1,
     show,
-    guid: deps.newGuid(),
+    guid: previous?.guid ?? deps.newGuid(),
     title: form.title.trim(),
     description: form.description.trim(),
-    pubDate: form.pubDate || undefined,
-    durationSeconds: Math.round(form.durationSeconds),
+    link: previous?.link,
+    pubDate,
+    durationSeconds: Math.round(duration),
     season: form.season,
     episode: form.episode,
     episodeType: form.episodeType,
     explicit: form.explicit,
+    persons: previous?.persons,
+    keywords: previous?.keywords,
+    transcriptLanguage: previous?.transcripts[0]?.language,
+    status: form.status,
   };
   const parsed = EpisodeInput.safeParse(raw);
   if (!parsed.success) {

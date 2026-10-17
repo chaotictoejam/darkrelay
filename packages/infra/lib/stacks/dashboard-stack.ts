@@ -115,6 +115,7 @@ export class DashboardStack extends Stack {
     mediaBucket.grantRead(uploads, 'inbox/*');
     mediaBucket.grantRead(uploads, 'inbox-status/*');
     mediaBucket.grantRead(uploads, 'catalog/*/show.json');
+    mediaBucket.grantRead(uploads, 'catalog/*/episodes/*');
     uploads.addToRolePolicy(
       new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [mediaBucket.bucketArn] }),
     );
@@ -189,6 +190,8 @@ export class DashboardStack extends Stack {
       ['/shows/{show}/uploads', apigw.HttpMethod.POST],
       ['/shows/{show}/uploads/{bundleId}', apigw.HttpMethod.GET],
       ['/shows/{show}/uploads/{bundleId}/{action}', apigw.HttpMethod.POST],
+      ['/shows/{show}/catalog', apigw.HttpMethod.GET],
+      ['/shows/{show}/catalog/{episodeId}', apigw.HttpMethod.GET],
     ] as const) {
       api.addRoutes({ path, methods: [method], integration: upload, authorizer });
     }

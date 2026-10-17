@@ -27,12 +27,21 @@ export const ACCEPT: Record<Slot, string> = Object.fromEntries(
   Object.entries(ALLOWED).map(([slot, exts]) => [slot, exts.map((e) => `.${e}`).join(',')]),
 ) as Record<Slot, string>;
 
-/** Bundle file names for the picked files, or every problem at once. */
-export function planFiles(picked: Picked[]): { files: PlannedFile[]; errors: string[] } {
+/**
+ * Bundle file names for the picked files, or every problem at once. An
+ * update may leave the media out: only the files picked are replaced.
+ */
+export function planFiles(
+  picked: Picked[],
+  { update = false } = {},
+): { files: PlannedFile[]; errors: string[] } {
   const errors: string[] = [];
   const files: PlannedFile[] = [];
   const media = picked.find((p) => p.slot === 'media');
-  if (!media) errors.push('Choose an audio (MP3, M4A) or video (MP4) file.');
+  if (!media && !update) errors.push('Choose an audio (MP3, M4A) or video (MP4) file.');
+  // Alone, video.mp4 reads as a video episode, and its sound would replace the episode's audio.
+  if (!media && update && picked.some((p) => p.slot === 'audiogram'))
+    errors.push('To replace the audiogram, choose the audio file again too.');
   for (const p of picked) {
     const e = ext(p.file.name);
     if (!ALLOWED[p.slot].includes(e)) {
@@ -69,6 +78,13 @@ export function localToIso(value: string): string | undefined {
   // DST gaps move the wall-clock time; report what the date actually is.
   const wall = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
   return `${wall}${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
+}
+
+/** The other way: an ISO time as a datetime-local value in the browser's time zone. */
+export function isoToLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** Byte ranges [start, end) of each part, numbered from 1. */

@@ -115,7 +115,7 @@ npx darkrelay episode reschedule my-show <guid> --pub-date now     # release imm
 
 How it works: the episode is stored and its media uploaded right away, but it stays out of the feed until its time. Every feed rebuild sets a one-shot EventBridge Scheduler job for the show's next release (5 seconds after it), which rebuilds the feed, invalidates the CDN copy and pings Podcast Index. The hourly sweep is a backup if a schedule is ever missed. Before release, the media is only reachable by its unlisted URL, which appears nowhere until the feed lists it. Moving an already-released episode into the future would pull it from the feed, so `reschedule` asks for `--force`. Scheduler is free at this volume (14 million invocations a month).
 
-`publish` saves `<file>.episode.json` next to the audio. Publishing the same file again updates the episode instead of creating a new one. Run `npx darkrelay --help` for every command.
+`publish` saves `<file>.episode.json` next to the audio. Publishing the same file again updates the episode instead of creating a new one. An update replaces the files its bundle contains and keeps the rest (artwork, transcripts, chapters, video), and a bundle for an existing episode may leave out the audio to change only its details or other files. Run `npx darkrelay --help` for every command.
 
 ### Episode bundles
 
@@ -123,8 +123,8 @@ How it works: the episode is stored and its media uploaded right away, but it st
 
 | File | Required | Notes |
 | --- | --- | --- |
-| `episode.json` | yes | Title, notes, dates, and optionally YouTube's own title and description. Schema: `packages/core/src/bundle.ts` |
-| `audio.mp3` or `audio.m4a` | yes | WAV and FLAC are rejected: export MP3 for feeds. |
+| `episode.json` | yes | Title, notes, dates, `status` (`hidden` or `published`), and optionally YouTube's own title and description. Schema: `packages/core/src/bundle.ts` |
+| `audio.mp3` or `audio.m4a` | yes, for a new episode | WAV and FLAC are rejected: export MP3 for feeds. |
 | `transcript.vtt` / `.srt` / `.json` | no | Each one becomes a `<podcast:transcript>`. |
 | `chapters.json` | no | Podcasting 2.0 JSON chapters. |
 | `cover.jpg` / `cover.png` | no | Episode artwork. |
@@ -279,7 +279,7 @@ Uploaders and admins get an **Upload episode** page: show, title, show notes (HT
 
 The browser sends the files straight to S3 as multipart uploads, so multi-GB videos are fine and nothing needs AWS credentials. The API hands out presigned URLs for one part at a time (valid 15 minutes, only for that bundle's files under `inbox/<show>/<bundleId>/`), failed parts are retried, and **Retry** resumes from the parts already sent. The API writes `episode.json` itself, last, after checking it against the bundle schema. The episode length is read in the browser; if it can't read the file, the page asks for it.
 
-Dashboard uploads create new episodes. To change an existing episode's media or details, use `darkrelay publish --guid` for now.
+**Editing episodes.** _Manage episodes_ on a show's page lists every episode, including scheduled and hidden ones. Editing one changes its details, release time or visibility, and can replace any of its files (audio, transcript, chapters, artwork, audiogram) without re-uploading the rest. Moving an episode that is already out back into the future asks for confirmation first, as `episode reschedule --force` does. A new audio file doesn't re-upload the YouTube video; the title and description still sync to it. Edits go through the publisher as a bundle, like everything else, so the dashboard API never writes outside `inbox/`.
 
 To run the download or YouTube pulls yourself (catch up, backfill, or check the logs are readable), see [docs/running-analytics.md](docs/running-analytics.md).
 

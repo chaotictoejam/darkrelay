@@ -7,6 +7,7 @@ import {
   layout,
   MEDIA_CACHE_CONTROL,
   DARKRELAY_NAMESPACE,
+  NO_MEDIA_ERROR,
   PROCESSED_FILE,
   PUBLIC_PREFIX,
   ProcessedResult,
@@ -37,6 +38,10 @@ export type BundleStatus =
  * Publishes an uploaded bundle: validates it, copies its files to versioned
  * public keys, writes the episode manifest and rebuilds the feed. The result
  * is written to the bundle's status key for the CLI to read.
+ *
+ * A bundle for an episode that already exists replaces the files it
+ * contains and keeps the rest, so it can carry new details only, or one
+ * corrected file.
  */
 export async function publishBundle(
   deps: PublisherDeps,
@@ -85,8 +90,15 @@ async function tryPublish(
   if (input.show !== slug)
     errors.push(`episode.json is for show "${input.show}", uploaded to "${slug}"`);
 
+  // Derived from the bundle when absent, so the second pass after
+  // transcoding arrives at the same guid.
+  const guid = input.guid ?? uuidV5(`${slug}/${bundleId}`, DARKRELAY_NAMESPACE);
+  const id = episodeId(guid);
+  const previousRaw = await store.getText(layout.episodeManifest(slug, id));
+  const previous = previousRaw ? EpisodeManifest.parse(JSON.parse(previousRaw)) : undefined;
+
   const { files, errors: fileErrors, ignored } = classifyBundle(names);
-  errors.push(...fileErrors);
+  errors.push(...fileErrors.filter((e) => !(previous && e === NO_MEDIA_ERROR)));
   if (files.chapters) {
     const chapters = await store.getText(prefix + files.chapters);
     try {
@@ -96,11 +108,6 @@ async function tryPublish(
     }
   }
   if (errors.length > 0) return { status: 'rejected', errors };
-
-  // Derived from the bundle when absent, so the second pass after
-  // transcoding arrives at the same guid.
-  const guid = input.guid ?? uuidV5(`${slug}/${bundleId}`, DARKRELAY_NAMESPACE);
-  const id = episodeId(guid);
 
   const processedRaw = await store.getText(prefix + PROCESSED_FILE);
   const processed = processedRaw ? ProcessedResult.parse(JSON.parse(processedRaw)) : undefined;
@@ -115,12 +122,10 @@ async function tryPublish(
       return { status: 'processing', guid, episodeId: id, job };
     }
   }
-  if (!files.audio) {
+  if (!files.audio && (files.video || !previous)) {
     return { status: 'rejected', errors: ['Video processing finished but produced no audio'] };
   }
   const hls = processed?.ok ? processed.hls : undefined;
-  const previousRaw = await store.getText(layout.episodeManifest(slug, id));
-  const previous = previousRaw ? EpisodeManifest.parse(JSON.parse(previousRaw)) : undefined;
 
   const copyTo = async (name: string) => {
     const key = layout.episodeAsset(slug, id, bundleId, name.toLowerCase());
@@ -132,12 +137,18 @@ async function tryPublish(
   };
 
   const audio = files.audio;
-  const audioSize = objects.find((o) => o.key === prefix + audio)!.size;
+  const enclosure = audio
+    ? {
+        asset: await copyTo(audio),
+        length: objects.find((o) => o.key === prefix + audio)!.size,
+        type: contentTypeFor(audio),
+      }
+    : previous!.enclosure;
   const manifestInput: EpisodeManifestInput = {
     schemaVersion: 1,
     guid,
     guidIsPermaLink: previous ? previous.guidIsPermaLink : false,
-    status: previous?.status ?? 'published',
+    status: input.status ?? previous?.status ?? 'published',
     title: input.title,
     description: input.description,
     link: input.link,
@@ -148,7 +159,7 @@ async function tryPublish(
     episode: input.episode,
     explicit: input.explicit,
     image: files.cover ? await copyTo(files.cover) : previous?.image,
-    enclosure: { asset: await copyTo(audio), length: audioSize, type: contentTypeFor(audio) },
+    enclosure,
     alternateEnclosures: hls
       ? [
           {
@@ -160,14 +171,16 @@ async function tryPublish(
           },
         ]
       : (previous?.alternateEnclosures ?? []),
-    transcripts: await Promise.all(
-      files.transcripts.map(async (t) => ({
-        asset: await copyTo(t.file),
-        type: t.type,
-        language: input.transcriptLanguage ?? show.language,
-      })),
-    ),
-    chapters: files.chapters ? await copyTo(files.chapters) : undefined,
+    transcripts: files.transcripts.length
+      ? await Promise.all(
+          files.transcripts.map(async (t) => ({
+            asset: await copyTo(t.file),
+            type: t.type,
+            language: input.transcriptLanguage ?? show.language,
+          })),
+        )
+      : (previous?.transcripts ?? []),
+    chapters: files.chapters ? await copyTo(files.chapters) : previous?.chapters,
     persons: input.persons,
     keywords: input.keywords,
     video: files.video ? await copyTo(files.video) : previous?.video,

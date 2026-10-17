@@ -64,6 +64,7 @@ const deps: UploadDeps = {
   },
   newBundleId: () => newBundleId(),
   newGuid: newEpisodeGuid,
+  now: () => new Date(),
 };
 
 export async function handler(
