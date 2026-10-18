@@ -10,6 +10,7 @@
   --series-1-wash: rgb(42 120 214 / 10%);
   --track: #e9eef6;
   --danger: #b42318;
+  --ok: #067647;
   --radius: 10px;
   font-family:
     system-ui,
@@ -31,6 +32,7 @@
     --series-1-wash: rgb(57 135 229 / 10%);
     --track: #232a33;
     --danger: #f97066;
+    --ok: #47cd89;
   }
 }
 :root[data-theme='dark'] {
@@ -45,10 +47,14 @@
   --series-1-wash: rgb(57 135 229 / 10%);
   --track: #232a33;
   --danger: #f97066;
+  --ok: #47cd89;
 }
 
 * {
   box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
 }
 body {
   margin: 0;
@@ -95,6 +101,7 @@ h2 {
   margin-left: auto;
 }
 .link {
+  text-decoration: none;
   background: none;
   border: 0;
   color: var(--text-secondary);
@@ -370,4 +377,170 @@ td.num,
 }
 .tooltip span {
   color: var(--text-secondary);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.button,
+button.primary {
+  display: inline-block;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--series-1);
+  background: var(--series-1);
+  color: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+button.primary:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.ok {
+  color: var(--ok);
+}
+
+.upload-form,
+.upload-progress {
+  max-width: 720px;
+}
+fieldset.plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 1rem;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+fieldset.field {
+  border-top: 1px solid var(--hairline);
+  padding-top: 0.75rem;
+}
+.field legend,
+.field-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.field legend {
+  padding: 0 0 0.3rem;
+}
+.field-hint {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.field input:not([type='radio'], [type='checkbox'], [type='file']),
+.field select,
+.field textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  width: 100%;
+}
+.field textarea {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
+}
+.field input[type='file'] {
+  font-size: 0.875rem;
+  max-width: 100%;
+}
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0 0.75rem;
+}
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+.inline input[type='datetime-local'] {
+  width: auto;
+}
+.upload-form .error p {
+  margin: 0 0 0.5rem;
+}
+
+.upload-files {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.upload-files li {
+  display: grid;
+  gap: 0.25rem;
+}
+.upload-files progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--series-1);
+}
+.upload-files .file-name {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.upload-files li.failed .muted {
+  color: var(--danger);
+}
+.upload-status p {
+  margin: 0.5rem 0;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--hairline);
+}
+.catalog td:nth-child(2) {
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  color: var(--text-secondary);
+}
+.badge.live {
+  color: var(--ok);
+  border-color: currentColor;
+}
+.badge.scheduled {
+  color: var(--series-1);
+  border-color: currentColor;
+}
+.confirm {
+  color: var(--danger);
 }

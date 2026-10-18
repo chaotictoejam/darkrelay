@@ -1,8 +1,3 @@
-import {
-  CognitoIdentityProviderClient,
-  AdminCreateUserCommand,
-  AdminDeleteUserCommand,
-} from '@aws-sdk/client-cognito-identity-provider';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import {
@@ -149,32 +144,4 @@ WHERE year >= ${new Date().getUTCFullYear() - 1}`;
       'Logs are readable. Counts appear after the nightly run, or now with: darkrelay analytics run',
     );
   }
-}
-
-export async function addDashboardUser(email: string, global: GlobalOptions) {
-  const out = await stackOutputs(global, 'Dashboard');
-  const cognito = new CognitoIdentityProviderClient({ region });
-  await cognito.send(
-    new AdminCreateUserCommand({
-      UserPoolId: out['UserPoolId'],
-      Username: email,
-      UserAttributes: [
-        { Name: 'email', Value: email },
-        { Name: 'email_verified', Value: 'true' },
-      ],
-      DesiredDeliveryMediums: ['EMAIL'],
-    }),
-  );
-  console.log(
-    `Invited ${email}. Cognito emails a temporary password; sign in at ${out['DashboardUrl']}`,
-  );
-}
-
-export async function removeDashboardUser(email: string, global: GlobalOptions) {
-  const out = await stackOutputs(global, 'Dashboard');
-  const cognito = new CognitoIdentityProviderClient({ region });
-  await cognito.send(
-    new AdminDeleteUserCommand({ UserPoolId: out['UserPoolId'], Username: email }),
-  );
-  console.log(`Removed ${email} from the dashboard`);
 }

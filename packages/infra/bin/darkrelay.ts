@@ -26,7 +26,12 @@ const analytics = new AnalyticsStack(app, `${config.stackPrefix}Analytics`, {
   mediaBucket: hosting.mediaBucket,
   distribution: hosting.distribution,
 });
-new DashboardStack(app, `${config.stackPrefix}Dashboard`, { env, config, table: analytics.table });
+new DashboardStack(app, `${config.stackPrefix}Dashboard`, {
+  env,
+  config,
+  table: analytics.table,
+  mediaBucket: hosting.mediaBucket,
+});
 if (config.alerts) {
   new AlertsStack(app, `${config.stackPrefix}Alerts`, {
     env,

@@ -1,4 +1,12 @@
-import { addCounts, emptyCounts, metricKeys, SLUG, type MetricItem } from '@darkrelay/core';
+import {
+  addCounts,
+  canView,
+  emptyCounts,
+  metricKeys,
+  SLUG,
+  type Access,
+  type MetricItem,
+} from '@darkrelay/core';
 
 export type Query = (
   pk: string,
@@ -9,6 +17,11 @@ export interface ApiResponse {
   statusCode: number;
   body: unknown;
 }
+
+export const FORBIDDEN: ApiResponse = {
+  statusCode: 403,
+  body: { error: "You don't have access to this show" },
+};
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EPISODE = /^[0-9a-f]{16}$/;
@@ -50,11 +63,15 @@ export function summarize(items: MetricItem[]) {
 const series = (query: Query, pk: string, from: string, to: string) =>
   query(pk, { between: [`D#${from}`, `D#${to}#￿`] }) as Promise<unknown> as Promise<MetricItem[]>;
 
-/** Routes a dashboard API request. Reads pre-aggregated items only. */
+/**
+ * Routes a dashboard API request. Reads pre-aggregated items only, for the
+ * shows the caller may see.
+ */
 export async function route(
   query: Query,
   path: string,
   params: Record<string, string | undefined>,
+  access: Access,
   now = new Date(),
 ): Promise<ApiResponse> {
   const parts = path.split('/').filter(Boolean);
@@ -68,7 +85,9 @@ export async function route(
     return {
       statusCode: 200,
       body: {
-        shows: shows.map((s) => ({ show: s['show'], title: s['title'] })),
+        shows: shows
+          .filter((s) => canView(access, String(s['show'])))
+          .map((s) => ({ show: s['show'], title: s['title'] })),
         lastRun: runs[0] ?? null,
       },
     };
@@ -76,6 +95,7 @@ export async function route(
 
   const show = parts[1]!;
   if (!SLUG.test(show)) return { statusCode: 400, body: { error: 'Bad show' } };
+  if (!canView(access, show)) return FORBIDDEN;
   const { from, to } = dateRange(params, now);
 
   if (parts.length === 2) {

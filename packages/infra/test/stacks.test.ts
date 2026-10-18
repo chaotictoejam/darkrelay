@@ -28,7 +28,12 @@ function synth(input: DeploymentConfigInput) {
     mediaBucket: hosting.mediaBucket,
     distribution: hosting.distribution,
   });
-  const dashboard = new DashboardStack(app, 'Dashboard', { env, config, table: analytics.table });
+  const dashboard = new DashboardStack(app, 'Dashboard', {
+    env,
+    config,
+    table: analytics.table,
+    mediaBucket: hosting.mediaBucket,
+  });
   return {
     hosting: Template.fromStack(hosting),
     publish: Template.fromStack(publish),
@@ -349,8 +354,66 @@ describe('dashboard', () => {
       UserPoolTier: 'LITE',
     });
     const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route'));
-    expect(routes).toHaveLength(2);
+    expect(routes.map((r) => r['Properties'].RouteKey).sort()).toEqual([
+      'GET /me',
+      'GET /shows',
+      'GET /shows/{proxy+}',
+      'GET /shows/{show}/catalog',
+      'GET /shows/{show}/catalog/{episodeId}',
+      'GET /shows/{show}/uploads/{bundleId}',
+      'POST /shows/{show}/uploads',
+      'POST /shows/{show}/uploads/{bundleId}/{action}',
+    ]);
     for (const r of routes) expect(r['Properties'].AuthorizationType).toBe('JWT');
+  });
+
+  it('creates the admin group; per-show groups come from the CLI', () => {
+    t.dashboard.resourceCountIs('AWS::Cognito::UserPoolGroup', 1);
+    t.dashboard.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'admin' });
+  });
+
+  it('lets the upload function write only under inbox/, and never delete', () => {
+    const fn = Object.entries(t.dashboard.findResources('AWS::Lambda::Function')).find(([id]) =>
+      id.startsWith('Uploads'),
+    );
+    expect(fn).toBeDefined();
+    const policies = Object.values(t.dashboard.findResources('AWS::IAM::Policy')).filter((p) =>
+      JSON.stringify(p['Properties'].Roles).includes('UploadsServiceRole'),
+    );
+    const statements = policies.flatMap(
+      (p) => p['Properties'].PolicyDocument.Statement as Record<string, unknown>[],
+    );
+    const writes = statements.filter((st) => JSON.stringify(st['Action']).includes('s3:PutObject'));
+    expect(writes.length).toBeGreaterThan(0);
+    for (const st of writes) expect(JSON.stringify(st['Resource'])).toMatch(/\/inbox\/\*"/);
+    const all = JSON.stringify(statements);
+    expect(all).not.toMatch(/s3:DeleteObject|dynamodb:/);
+    for (const st of statements.filter((st) =>
+      JSON.stringify(st['Action']).includes('GetObject'),
+    )) {
+      expect(JSON.stringify(st['Resource'])).toMatch(
+        /\/(inbox\/\*|inbox-status\/\*|catalog\/\*\/(show\.json|episodes\/\*))"/,
+      );
+    }
+  });
+
+  it('allows browser PUTs to the media bucket from the dashboard only, exposing ETag', () => {
+    const [cors] = Object.values(t.dashboard.findResources('Custom::AWS'));
+    const create = JSON.stringify(cors!['Properties'].Create);
+    expect(create).toMatch(/putBucketCors/);
+    expect(create).toMatch(/\\"AllowedMethods\\":\[\\"PUT\\"\]/);
+    expect(create).toMatch(/ETag/);
+    expect(create).toMatch(/localhost:5173/);
+    expect(create).not.toMatch(/\\"\*\\"/);
+  });
+
+  it('allows POST from the dashboard to the API', () => {
+    t.dashboard.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: Match.objectLike({
+        AllowMethods: ['GET', 'POST'],
+        AllowHeaders: ['authorization', 'content-type'],
+      }),
+    });
   });
 });
 

@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { newBundleId, planBundle } from '../src/commands/publish';
+import { newBundleId } from '@darkrelay/core';
+import { planBundle } from '../src/commands/publish';
 
 let dir: string;
 const duration = async () => 1799.6;

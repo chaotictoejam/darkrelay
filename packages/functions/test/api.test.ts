@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { accessFromGroups } from '@darkrelay/core';
 import { dateRange, route, summarize, type Query } from '../src/analytics/api';
 
 const NOW = new Date('2026-10-12T12:00:00Z');
+const ADMIN = accessFromGroups(['admin']);
 const item = (date: string, source: string, downloads: number, apps = {}) => ({
   pk: 'x',
   sk: `D#${date}#${source}`,
@@ -61,14 +63,14 @@ describe('route', () => {
   });
 
   it('lists shows with the last processed day', async () => {
-    expect((await route(q, '/shows', {}, NOW)).body).toEqual({
+    expect((await route(q, '/shows', {}, ADMIN, NOW)).body).toEqual({
       shows: [{ show: 'cc', title: 'Chaotic Commits' }],
       lastRun: { pk: 'RUN#cloudfront', sk: '2026-10-11', date: '2026-10-11' },
     });
   });
 
   it('returns a show overview for the last 90 days, newest episodes first, sources combined', async () => {
-    const res = await route(q, '/shows/cc', {}, NOW);
+    const res = await route(q, '/shows/cc', {}, ADMIN, NOW);
     expect(res.statusCode).toBe(200);
     const body = res.body as Record<string, unknown>;
     expect(body['from']).toBe('2026-07-15');
@@ -91,6 +93,7 @@ describe('route', () => {
       q,
       '/shows/cc/episodes/0000000000000002',
       { from: '2026-10-01', to: '2026-10-31' },
+      ADMIN,
       NOW,
     );
     expect(res.body).toMatchObject({ episode: { title: 'New' }, totals: { downloads: 6 } });
@@ -98,14 +101,42 @@ describe('route', () => {
 
   it('rejects bad input and unknown paths without querying', async () => {
     const before = calls.length;
-    expect((await route(q, '/shows/BAD!', {}, NOW)).statusCode).toBe(400);
-    expect((await route(q, '/shows/cc/episodes/xyz', {}, NOW)).statusCode).toBe(400);
-    expect((await route(q, '/other', {}, NOW)).statusCode).toBe(404);
+    expect((await route(q, '/shows/BAD!', {}, ADMIN, NOW)).statusCode).toBe(400);
+    expect((await route(q, '/shows/cc/episodes/xyz', {}, ADMIN, NOW)).statusCode).toBe(400);
+    expect((await route(q, '/other', {}, ADMIN, NOW)).statusCode).toBe(404);
     expect(calls.length).toBe(before);
   });
 
+  it('lists only the shows the caller may see', async () => {
+    const shows = (r: Awaited<ReturnType<typeof route>>) => (r.body as { shows: unknown[] }).shows;
+    expect(shows(await route(q, '/shows', {}, accessFromGroups([]), NOW))).toEqual([]);
+    expect(shows(await route(q, '/shows', {}, accessFromGroups(['viewer:other']), NOW))).toEqual(
+      [],
+    );
+    expect(shows(await route(q, '/shows', {}, accessFromGroups(['uploader:cc']), NOW))).toEqual([
+      { show: 'cc', title: 'Chaotic Commits' },
+    ]);
+  });
+
+  it('403s a show or episode the caller has no role for, without querying', async () => {
+    const before = calls.length;
+    for (const groups of [[], ['viewer:other'], ['uploader:other'], ['viewer']]) {
+      const access = accessFromGroups(groups);
+      expect((await route(q, '/shows/cc', {}, access, NOW)).statusCode).toBe(403);
+      expect(
+        (await route(q, '/shows/cc/episodes/0000000000000002', {}, access, NOW)).statusCode,
+      ).toBe(403);
+    }
+    expect(calls.length).toBe(before);
+    expect((await route(q, '/shows/cc', {}, accessFromGroups(['viewer:cc']), NOW)).statusCode).toBe(
+      200,
+    );
+  });
+
   it('404s an episode with no data yet', async () => {
-    expect((await route(q, '/shows/cc/episodes/00000000000000ff', {}, NOW)).statusCode).toBe(404);
+    expect((await route(q, '/shows/cc/episodes/00000000000000ff', {}, ADMIN, NOW)).statusCode).toBe(
+      404,
+    );
   });
 });
 

@@ -16,7 +16,9 @@
     "@aws-sdk/client-scheduler": "3.1149.0",
     "@aws-sdk/client-ssm": "3.1149.0",
     "@aws-sdk/lib-dynamodb": "3.1149.0",
-    "@darkrelay/core": "*"
+    "@aws-sdk/s3-request-presigner": "3.1149.0",
+    "@darkrelay/core": "*",
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.164"

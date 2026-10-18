@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import {
@@ -6,6 +5,7 @@ import {
   classifyBundle,
   contentTypeFor,
   layout,
+  newBundleId,
   newEpisodeGuid,
   type EpisodeInputRaw,
 } from '@darkrelay/core';
@@ -127,11 +127,6 @@ export async function planBundle(
     throw new Error(`Episode details incomplete:\n${z.prettifyError(parsed.error)}`);
   }
   return { input: parsed.data, files: upload, sidecar };
-}
-
-export function newBundleId(now = new Date()): string {
-  const stamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
-  return `${stamp}-${randomBytes(3).toString('hex')}`;
 }
 
 export async function publish(target: string, flags: PublishFlags, global: GlobalOptions) {
