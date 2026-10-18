@@ -42,6 +42,8 @@ export function toGroups(rows: Record<string, string>[]): RequestGroup[] {
     path: r['path'] ?? '',
     userAgent: decodeUserAgent(r['user_agent'] ?? ''),
     country: r['country'] || undefined,
+    asn: r['asn'] || undefined,
+    client: r['client'] || undefined,
     requests: Number(r['requests'] ?? 0),
     bytes: Number(r['bytes'] ?? 0),
   }));

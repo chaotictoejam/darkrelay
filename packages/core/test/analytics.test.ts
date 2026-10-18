@@ -142,13 +142,56 @@ describe('countDownloads', () => {
   });
 });
 
+describe('potential crawlers', () => {
+  const facts = () => ({ length: 60_000_000, durationSeconds: 3600 });
+  const CHROME =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+  const ep = (i: number) => `/chaotic-commits/${String(i).padStart(16, '0')}/imported/audio.mp3`;
+  // One network, five IPs, five episodes: the shape of the Oct 2026 crawler.
+  const sweep = (asn: string, userAgent = CHROME) =>
+    [0, 1, 2, 3, 4].map((i) => ({
+      path: ep(i),
+      userAgent,
+      country: 'JP',
+      asn,
+      client: `${asn}-${i}`,
+      requests: 1,
+      bytes: 60_000_000,
+    }));
+  const tally = (groups: RequestGroup[]) => {
+    let downloads = 0;
+    let suspect = 0;
+    for (const e of countDownloads(groups, facts).episodes.values()) {
+      downloads += e.downloads;
+      suspect += e.suspectDownloads ?? 0;
+    }
+    return { downloads, suspect };
+  };
+
+  it('keeps the downloads in the total and tallies them as potential crawler', () => {
+    expect(tally(sweep('2907'))).toEqual({ downloads: 5, suspect: 5 });
+  });
+
+  it('leaves podcast apps alone even when many listeners share a network', () => {
+    expect(tally(sweep('7922', APPLE))).toEqual({ downloads: 5, suspect: 0 });
+  });
+
+  it('needs several IPs and several episodes on one network', () => {
+    const fewIps = sweep('2907').map((g) => ({ ...g, client: 'same' }));
+    const fewEpisodes = sweep('2907').map((g) => ({ ...g, path: ep(0) }));
+    const noAsn = sweep('-');
+    for (const groups of [fewIps, fewEpisodes, noAsn]) expect(tally(groups).suspect).toBe(0);
+  });
+});
+
 describe('metrics', () => {
   it('adds counts including breakdown maps', () => {
     const a = { ...emptyCounts(), downloads: 2, apps: { X: 2 } };
     const b = { ...emptyCounts(), downloads: 1, serverDownloads: 4, apps: { X: 1, Y: 1 } };
-    expect(addCounts(a, b)).toMatchObject({
+    expect(addCounts(a, { ...b, suspectDownloads: 1 })).toMatchObject({
       downloads: 3,
       serverDownloads: 4,
+      suspectDownloads: 1,
       apps: { X: 3, Y: 1 },
     });
   });

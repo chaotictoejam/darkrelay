@@ -26,11 +26,15 @@ export function summarize(items: MetricItem[]) {
   const byDate = new Map<string, { date: string; downloads: number; serverDownloads: number }>();
   const total = emptyCounts();
   const sources = new Set<string>();
-  const bySource = new Map<string, { source: string; plays: number; watchSeconds: number }>();
+  const bySource = new Map<
+    string,
+    { source: string; plays: number; watchSeconds: number; apps: Record<string, number> }
+  >();
   for (const i of items) {
-    const s = bySource.get(i.source) ?? { source: i.source, plays: 0, watchSeconds: 0 };
+    const s = bySource.get(i.source) ?? { source: i.source, plays: 0, watchSeconds: 0, apps: {} };
     s.plays += i.downloads;
     s.watchSeconds += i.watchSeconds ?? 0;
+    for (const [name, n] of Object.entries(i.apps)) s.apps[name] = (s.apps[name] ?? 0) + n;
     bySource.set(i.source, s);
     const d = byDate.get(i.date) ?? { date: i.date, downloads: 0, serverDownloads: 0 };
     d.downloads += i.downloads;

@@ -15,7 +15,8 @@ function partition(date: Date) {
  * (the IAB dedupe key, calendar-day window). Log files are partitioned by
  * delivery hour, so the first hours of the next day are scanned too and
  * rows are filtered on the request's own date. IPs are grouped on, never
- * returned.
+ * returned: `client` is a per-query index that only tells IPs apart within
+ * the day, for spotting one network downloading from many IPs.
  */
 export function dailyQuery(target: QueryTarget, date: string): string {
   if (!DATE.test(date)) throw new Error(`Invalid date ${date}`);
@@ -26,6 +27,8 @@ export function dailyQuery(target: QueryTarget, date: string): string {
   cs_uri_stem AS path,
   cs_user_agent AS user_agent,
   arbitrary(c_country) AS country,
+  arbitrary(asn) AS asn,
+  CAST(dense_rank() OVER (ORDER BY xxhash64(to_utf8(c_ip))) AS varchar) AS client,
   count(*) AS requests,
   sum(coalesce(try_cast(sc_bytes AS bigint), 0)) AS bytes
 FROM "${target.database}"."${target.table}"

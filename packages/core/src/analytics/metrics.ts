@@ -17,6 +17,8 @@ export interface DailyCounts {
   watchSeconds?: number;
   /** Downloads by self-hosted servers (audiobookshelf etc.): downloads, not listens. */
   serverDownloads: number;
+  /** Downloads (included in `downloads`) from networks that look like a crawler. */
+  suspectDownloads?: number;
   apps: Record<string, number>;
   countries: Record<string, number>;
   devices: Record<string, number>;
@@ -71,6 +73,8 @@ export function emptyCounts(): DailyCounts {
 export function addCounts(into: DailyCounts, from: DailyCounts): DailyCounts {
   into.downloads += from.downloads;
   into.serverDownloads += from.serverDownloads;
+  if (from.suspectDownloads)
+    into.suspectDownloads = (into.suspectDownloads ?? 0) + from.suspectDownloads;
   if (from.watchSeconds) into.watchSeconds = (into.watchSeconds ?? 0) + from.watchSeconds;
   for (const k of ['apps', 'countries', 'devices'] as const) {
     for (const [name, n] of Object.entries(from[k])) into[k][name] = (into[k][name] ?? 0) + n;
@@ -81,7 +85,10 @@ export function addCounts(into: DailyCounts, from: DailyCounts): DailyCounts {
 /** Plays in the first 7/30/90 days after release (release day is day 0), across all sources. */
 export function windowTotals(
   pubDate: string,
-  series: Pick<MetricItem, 'date' | 'downloads' | 'serverDownloads' | 'watchSeconds'>[],
+  series: Pick<
+    MetricItem,
+    'date' | 'downloads' | 'serverDownloads' | 'suspectDownloads' | 'watchSeconds'
+  >[],
 ) {
   const start = Date.parse(pubDate.slice(0, 10) + 'T00:00:00Z');
   const totals = {
@@ -90,12 +97,14 @@ export function windowTotals(
     downloads90: 0,
     downloadsTotal: 0,
     serverTotal: 0,
+    suspectTotal: 0,
     watchSecondsTotal: 0,
   };
   for (const item of series) {
     const age = Math.floor((Date.parse(item.date + 'T00:00:00Z') - start) / 86_400_000);
     totals.downloadsTotal += item.downloads;
     totals.serverTotal += item.serverDownloads;
+    totals.suspectTotal += item.suspectDownloads ?? 0;
     totals.watchSecondsTotal += item.watchSeconds ?? 0;
     if (age < 7) totals.downloads7 += item.downloads;
     if (age < 30) totals.downloads30 += item.downloads;
