@@ -107,6 +107,21 @@ const SOURCES: Record<string, string> = {
   'spotify-csv': 'Spotify',
 };
 
+/** Sources counted from RSS downloads, where "app" means the listener's podcast app. */
+const DOWNLOAD_SOURCES = new Set(['cloudfront', 'prefix']);
+
+/** Downloads by podcast app, leaving out platforms (YouTube views, CSV exports). */
+export function podcastApps(
+  bySource: { source: string; apps?: Record<string, number> }[],
+): Record<string, number> {
+  const apps: Record<string, number> = {};
+  for (const s of bySource) {
+    if (!DOWNLOAD_SOURCES.has(s.source)) continue;
+    for (const [name, n] of Object.entries(s.apps ?? {})) apps[name] = (apps[name] ?? 0) + n;
+  }
+  return apps;
+}
+
 export function sourceName(source: string): string {
   return SOURCES[source] ?? source;
 }

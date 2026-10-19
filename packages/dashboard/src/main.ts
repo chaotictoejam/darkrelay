@@ -14,6 +14,7 @@ import {
   deviceName,
   duration,
   fillDays,
+  podcastApps,
   sourceName,
   shortDate,
   topEntries,
@@ -64,11 +65,11 @@ function rangeControl(base: string, days: number) {
   return nav;
 }
 
-function stat(label: string, value: number, note?: string, hero = false) {
+function stat(label: string, value: number, notes: (string | undefined)[] = [], hero = false) {
   const tile = el('div', undefined, hero ? 'stat hero' : 'stat');
   tile.append(el('span', label, 'stat-label'), el('span', compact(value), 'stat-value'));
   tile.lastElementChild!.setAttribute('title', value.toLocaleString('en-US'));
-  if (note) tile.append(el('span', note, 'stat-note'));
+  for (const note of notes) if (note) tile.append(el('span', note, 'stat-note'));
   return tile;
 }
 
@@ -127,7 +128,10 @@ function sourcesCard(data: SeriesResponse) {
 function breakdowns(data: SeriesResponse) {
   const grid = el('div', undefined, 'grid');
   grid.append(
-    card('Apps', barList(topEntries(data.totals.apps), 'Downloads by app')),
+    card(
+      'Podcast apps',
+      barList(topEntries(podcastApps(data.bySource)), 'Downloads by podcast app'),
+    ),
     card(
       'Countries',
       barList(topEntries(data.totals.countries), 'Downloads by country', countryName),
@@ -159,6 +163,10 @@ function trend(data: SeriesResponse, notBefore?: string) {
 
 function serverNote(n: number) {
   return n ? `Plus ${compact(n)} by self-hosted servers (downloads, not listens)` : undefined;
+}
+
+function crawlerNote(n = 0) {
+  return n ? `Includes ${compact(n)} potential crawler downloads` : undefined;
 }
 
 async function showList(config: RuntimeConfig) {
@@ -222,7 +230,7 @@ async function showView(config: RuntimeConfig, show: string, days: number) {
     stat(
       `Plays & downloads, last ${days === 365 ? '12 months' : `${days} days`}`,
       data.totals.downloads,
-      serverNote(data.totals.serverDownloads),
+      [serverNote(data.totals.serverDownloads), crawlerNote(data.totals.suspectDownloads)],
       true,
     ),
     stat('Episodes', data.episodes.length),
@@ -278,7 +286,12 @@ async function episodeView(config: RuntimeConfig, show: string, id: string, days
   back.className = 'back';
   const stats = el('div', undefined, 'stats');
   stats.append(
-    stat('All time', e.downloadsTotal, serverNote(e.serverTotal), true),
+    stat(
+      'All time',
+      e.downloadsTotal,
+      [serverNote(e.serverTotal), crawlerNote(e.suspectTotal)],
+      true,
+    ),
     stat('First 7 days', e.downloads7),
     stat('First 30 days', e.downloads30),
     stat('First 90 days', e.downloads90),

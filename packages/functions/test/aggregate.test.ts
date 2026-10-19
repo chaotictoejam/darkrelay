@@ -93,6 +93,37 @@ describe('aggregateDay', () => {
     expect(table.get('RUN#cloudfront|2026-10-11')).toBeDefined();
   });
 
+  it('keeps potential crawler downloads in the total and tallies them', async () => {
+    const chrome = 'Mozilla/5.0%20(Macintosh;%20Intel%20Mac%20OS%20X%2010_15_7)%20Chrome/130.0';
+    const episodes = [
+      '676385c932b682b4',
+      '0000000000000001',
+      '0000000000000002',
+      '0000000000000003',
+      '0000000000000004',
+    ];
+    const { deps, table } = fakeDeps([
+      ...episodes.map((id, i) =>
+        row({
+          path: `/chaotic-commits/${id}/imported/audio.mp3`,
+          user_agent: chrome,
+          asn: '2907',
+          client: String(i),
+        }),
+      ),
+      row({ asn: '2907', client: '9' }),
+    ]);
+    await aggregateDay(deps, '2026-10-11');
+    expect(table.get('S#chaotic-commits#ALL|D#2026-10-11#cloudfront')).toMatchObject({
+      downloads: 6,
+      suspectDownloads: 5,
+    });
+    expect(table.get(`S#chaotic-commits|E#${ID}`)).toMatchObject({
+      downloadsTotal: 2,
+      suspectTotal: 1,
+    });
+  });
+
   it('is idempotent: re-running a day overwrites instead of adding', async () => {
     const { deps, table } = fakeDeps([row()]);
     await aggregateDay(deps, '2026-10-11');
@@ -126,6 +157,7 @@ describe('windowTotals', () => {
       downloads90: 15,
       downloadsTotal: 21,
       serverTotal: 0,
+      suspectTotal: 0,
       watchSecondsTotal: 0,
     });
   });
@@ -143,7 +175,11 @@ describe('dailyQuery', () => {
     expect(sql).toContain('(year = 2026 AND month = 11 AND day = 1) AND hour < 3');
     expect(sql).toContain(`"date" = '2026-10-31'`);
     expect(sql).toContain('GROUP BY cs_uri_stem, c_ip, cs_user_agent');
-    expect(sql).not.toMatch(/SELECT[^]*c_ip[^]*FROM/);
+    // The IP only feeds a per-day index, through a hash; it is never returned.
+    expect(sql).toContain(
+      'dense_rank() OVER (ORDER BY xxhash64(to_utf8(c_ip))) AS varchar) AS client',
+    );
+    expect(sql.replace('xxhash64(to_utf8(c_ip))', '')).not.toMatch(/SELECT[^]*c_ip[^]*FROM/);
   });
   it('rejects anything that is not a date or distribution id', () => {
     expect(() => dailyQuery(target, "2026-10-31' OR 1=1")).toThrow();

@@ -10,6 +10,8 @@ export interface Breakdown {
   downloads: number;
   watchSeconds?: number;
   serverDownloads: number;
+  /** Potential crawler downloads, already included in `downloads`. */
+  suspectDownloads?: number;
   apps: Record<string, number>;
   countries: Record<string, number>;
   devices: Record<string, number>;
@@ -25,6 +27,7 @@ export interface EpisodeSummary {
   downloads90: number;
   downloadsTotal: number;
   serverTotal: number;
+  suspectTotal?: number;
 }
 
 export interface SeriesResponse {
@@ -34,7 +37,12 @@ export interface SeriesResponse {
   daily: Day[];
   totals: Breakdown;
   sources: string[];
-  bySource: { source: string; plays: number; watchSeconds: number }[];
+  bySource: {
+    source: string;
+    plays: number;
+    watchSeconds: number;
+    apps: Record<string, number>;
+  }[];
 }
 
 export interface ShowResponse extends SeriesResponse {

@@ -6,6 +6,7 @@ import {
   duration,
   fillDays,
   niceTicks,
+  podcastApps,
   sourceName,
   topEntries,
 } from '../src/format';
@@ -63,5 +64,16 @@ describe('format', () => {
   it('names sources, and passes unknown ones through', () => {
     expect(sourceName('youtube')).toBe('YouTube (views)');
     expect(sourceName('new-source')).toBe('new-source');
+  });
+
+  it('counts podcast apps from download sources only', () => {
+    expect(
+      podcastApps([
+        { source: 'cloudfront', apps: { Overcast: 3, 'Apple Podcasts': 2 } },
+        { source: 'prefix', apps: { Overcast: 1 } },
+        { source: 'youtube', apps: { YouTube: 9 } },
+        { source: 'spotify-csv' },
+      ]),
+    ).toEqual({ Overcast: 4, 'Apple Podcasts': 2 });
   });
 });
