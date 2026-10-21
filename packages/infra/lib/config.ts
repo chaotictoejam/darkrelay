@@ -77,6 +77,20 @@ export const DeploymentConfig = z.object({
     .optional(),
   /** CloudFront edge coverage. "100" (North America and Europe) is the cheapest. */
   priceClass: z.enum(['100', '200', 'All']).default('100'),
+  /**
+   * Extra tags for every resource, on top of Project and Deployment, e.g. a
+   * cost centre. Activate them as cost allocation tags to see them in Cost Explorer.
+   */
+  tags: z
+    .record(
+      z
+        .string()
+        .min(1)
+        .max(128)
+        .refine((k) => !k.toLowerCase().startsWith('aws:'), 'aws: tag keys are reserved'),
+      z.string().max(256),
+    )
+    .default({}),
 });
 export type DeploymentConfig = z.infer<typeof DeploymentConfig>;
 export type DeploymentConfigInput = z.input<typeof DeploymentConfig>;

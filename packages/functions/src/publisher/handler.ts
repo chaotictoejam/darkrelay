@@ -75,6 +75,8 @@ const deps: PublisherDeps = {
         taskDefinition: env('TASK_DEFINITION_ARN'),
         count: 1,
         startedBy: 'darkrelay',
+        // Cost allocation tags from the stack, so Fargate time shows up in Cost Explorer.
+        propagateTags: 'TASK_DEFINITION',
         capacityProviderStrategy: [
           { capacityProvider: opts.spot === false ? 'FARGATE' : 'FARGATE_SPOT', weight: 1 },
         ],

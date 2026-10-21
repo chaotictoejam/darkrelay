@@ -48,6 +48,7 @@ Everything deploys to **us-east-1** (CloudFront certificates and log delivery mu
 | `domain` | none | Omit to use the `*.cloudfront.net` domain. |
 | `logs.retentionDays` | `90` | Raw access logs (they contain IP addresses) are deleted after this. |
 | `priceClass` | `100` | CloudFront edge coverage. `100` (North America and Europe) is cheapest. |
+| `tags` | none | Extra tags on every resource, e.g. `{"CostCenter": "podcast"}`. See [Cost Explorer tags](#cost-explorer-tags). |
 
 **Domain with Route 53** (the zone must be in the same account; DNS records and the certificate are created for you):
 
@@ -307,6 +308,16 @@ Traffic is the only thing that can make the bill grow fast, so `alerts` in `dark
 
 - **Spike alarm** (CloudWatch, $0.10/month): more than `hourlyTransferGB` (default 20 GB) served by DarkRelay's media distribution in one hour. It fires within about an hour and counts only DarkRelay traffic. Confirm the subscription from the first email AWS sends, or nothing arrives.
 - **Spend budget** (AWS Budgets, free): CloudFront spend passing each of `monthlyUsd` (default $25, $100, $500), plus a warning when the month is forecast to pass the first. Budgets that only notify are free however many the account has; AWS only charges for budgets with actions. Billing data lags by several hours, and the budget counts every CloudFront distribution in the account.
+
+### Cost Explorer tags
+
+Every resource is tagged `Project=DarkRelay` and `Deployment=<stackPrefix>`, plus anything in `tags` in `darkrelay.config.json`. Transcoder tasks inherit the tags from their task definition, so Fargate time is counted too. To use them in Cost Explorer, activate the keys once (they appear about a day after the first deploy):
+
+```bash
+aws ce update-cost-allocation-tags-status --cost-allocation-tags-status TagKey=Project,Status=Active TagKey=Deployment,Status=Active
+```
+
+or under **Billing and Cost Management → Cost allocation tags**. Costs from before activation aren't tagged, and resources DarkRelay doesn't create (such as an existing Route 53 hosted zone) aren't either.
 
 ## Development
 

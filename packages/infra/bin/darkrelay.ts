@@ -5,9 +5,11 @@ import { AnalyticsStack } from '../lib/stacks/analytics-stack';
 import { DashboardStack } from '../lib/stacks/dashboard-stack';
 import { HostingStack } from '../lib/stacks/hosting-stack';
 import { PublishStack } from '../lib/stacks/publish-stack';
+import { tagDeployment } from '../lib/tags';
 
 const config = loadConfig();
 const app = new App();
+tagDeployment(app, config);
 // us-east-1 only: CloudFront certificates and log delivery sources must live there.
 const env = { account: config.account ?? process.env['CDK_DEFAULT_ACCOUNT'], region: 'us-east-1' };
 
