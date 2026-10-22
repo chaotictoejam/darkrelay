@@ -146,7 +146,7 @@ export function hlsArgs(
   return args;
 }
 
-/** Audio for the feed: 128 kbps stereo MP3. DarkRoom already normalised loudness. */
+/** Audio for the feed: 128 kbps stereo MP3. Darkroom already normalised loudness. */
 export function audioArgs(input: string, output: string): string[] {
   return [
     '-hide_banner',

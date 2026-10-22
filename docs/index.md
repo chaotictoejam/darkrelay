@@ -1,6 +1,6 @@
 # DarkRelay
 
-Self-hosted, serverless podcast hosting and analytics on AWS. It is the publishing half of [DarkRoom](https://github.com/chaotictoejam/darkroom): DarkRoom records, edits and exports; DarkRelay publishes and measures.
+Self-hosted, serverless podcast hosting and analytics on AWS. It is the publishing half of [Darkroom](https://github.com/chaotictoejam/darkroom): Darkroom records, edits and exports; DarkRelay publishes and measures.
 
 One upload in. An RSS feed (iTunes and Podcasting 2.0 tags) out, served from your own AWS account, with your own download logs. DarkRelay can also upload each episode's video to YouTube and bring YouTube views, watch time and retention into the same dashboard.
 

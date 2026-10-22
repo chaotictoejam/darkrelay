@@ -1,6 +1,6 @@
 # DarkRelay
 
-Self-hosted, serverless podcast hosting and analytics on AWS. It is the publishing half of [DarkRoom](https://github.com/chaotictoejam/darkroom): DarkRoom records, edits and exports; DarkRelay publishes and measures.
+Self-hosted, serverless podcast hosting and analytics on AWS. It is the publishing half of [Darkroom](https://github.com/chaotictoejam/darkroom): Darkroom records, edits and exports; DarkRelay publishes and measures.
 
 One upload in. An RSS feed (iTunes and Podcasting 2.0 tags) out, served from your own AWS account, with your own download logs.
 
@@ -92,7 +92,7 @@ npx darkrelay show go-live my-show
 npx darkrelay show get my-show > my-show.json
 npx darkrelay show put my-show.json
 
-# Publish a DarkRoom MP3 export
+# Publish a Darkroom MP3 export
 npx darkrelay publish "Episode 12.mp3" --show my-show \
   --title "Episode 12" --notes notes.html --season 2 --episode 12 --transcript ep12.vtt
 
@@ -120,7 +120,7 @@ How it works: the episode is stored and its media uploaded right away, but it st
 
 ### Episode bundles
 
-`publish` also takes a directory, which is the format DarkRoom will export directly:
+`publish` also takes a directory, which is the format Darkroom will export directly:
 
 | File | Required | Notes |
 | --- | --- | --- |
