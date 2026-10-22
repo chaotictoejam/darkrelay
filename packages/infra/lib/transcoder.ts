@@ -2,6 +2,7 @@ import {
   aws_ec2 as ec2,
   aws_ecs as ecs,
   aws_events as events,
+  aws_iam as iam,
   aws_events_targets as eventTargets,
   aws_lambda as lambda,
   aws_logs as logs,
@@ -75,6 +76,14 @@ export class Transcoder extends Construct {
     bucket.grantPut(this.taskDefinition.taskRole, 'public/*');
 
     this.taskDefinition.grantRun(publisher);
+    // RunTask copies the task definition's cost tags onto each task, which needs TagResource.
+    publisher.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ecs:TagResource'],
+        resources: ['*'],
+        conditions: { StringEquals: { 'ecs:CreateAction': 'RunTask' } },
+      }),
+    );
     const env: Record<string, string> = {
       CLUSTER_ARN: this.cluster.clusterArn,
       TASK_DEFINITION_ARN: this.taskDefinition.taskDefinitionArn,

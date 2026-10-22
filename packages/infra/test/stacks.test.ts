@@ -7,12 +7,14 @@ import { AlertsStack } from '../lib/stacks/alerts-stack';
 import { AnalyticsStack } from '../lib/stacks/analytics-stack';
 import { DashboardStack } from '../lib/stacks/dashboard-stack';
 import { PublishStack } from '../lib/stacks/publish-stack';
+import { tagDeployment } from '../lib/tags';
 
 const env = { account: '123456789012', region: 'us-east-1' };
 
 function synth(input: DeploymentConfigInput) {
   const config = DeploymentConfig.parse(input);
   const app = new App();
+  tagDeployment(app, config);
   const hosting = new HostingStack(app, 'Hosting', { env, config });
   const publish = new PublishStack(app, 'Publish', {
     env,
@@ -51,6 +53,7 @@ beforeAll(() => {
       hostedZoneName: 'example.com',
       hostedZoneId: 'Z123',
     },
+    tags: { CostCenter: 'podcast' },
   });
 }, 120_000);
 
@@ -491,5 +494,38 @@ describe('config', () => {
         },
       }),
     ).toThrow();
+  });
+});
+
+describe('cost allocation tags', () => {
+  const tags = Match.arrayWith([
+    { Key: 'CostCenter', Value: 'podcast' },
+    { Key: 'Deployment', Value: 'DarkRelay' },
+    { Key: 'Project', Value: 'DarkRelay' },
+  ]);
+
+  it('tags the resources that cost money', () => {
+    t.hosting.hasResourceProperties('AWS::CloudFront::Distribution', { Tags: tags });
+    t.hosting.hasResourceProperties('AWS::S3::Bucket', { Tags: tags });
+    t.analytics.hasResourceProperties('AWS::DynamoDB::Table', { Tags: tags });
+    t.publish.hasResourceProperties('AWS::ECS::TaskDefinition', { Tags: tags });
+    t.publish.hasResourceProperties('AWS::Lambda::Function', { Tags: tags });
+  });
+
+  it('lets the publisher copy the task definition tags onto each transcode task', () => {
+    t.publish.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'ecs:TagResource',
+            Condition: { StringEquals: { 'ecs:CreateAction': 'RunTask' } },
+          }),
+        ]),
+      },
+    });
+  });
+
+  it('rejects reserved aws: keys', () => {
+    expect(() => DeploymentConfig.parse({ tags: { 'aws:foo': 'x' } })).toThrow();
   });
 });
