@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { Person, SLUG, YouTubeCopy } from './model';
 
 /**
- * `episode.json` in a DarkRoom bundle. The CLI writes it for you when you
- * publish a bare audio file; DarkRoom can write it directly later.
+ * `episode.json` in a Darkroom bundle. The CLI writes it for you when you
+ * publish a bare audio file; Darkroom can write it directly later.
  */
 export const EpisodeInput = z.object({
   schemaVersion: z.literal(1),
