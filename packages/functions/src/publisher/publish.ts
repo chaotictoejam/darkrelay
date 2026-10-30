@@ -159,6 +159,7 @@ async function tryPublish(
     episode: input.episode,
     explicit: input.explicit,
     image: files.cover ? await copyTo(files.cover) : previous?.image,
+    thumbnail: files.thumbnail ? await copyTo(files.thumbnail) : previous?.thumbnail,
     enclosure,
     alternateEnclosures: hls
       ? [

@@ -113,6 +113,7 @@ export interface EpisodeDetails {
     transcripts: string[];
     chapters: boolean;
     cover: boolean;
+    thumbnail: boolean;
   };
   youtube?: { videoId: string };
 }

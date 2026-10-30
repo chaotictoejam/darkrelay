@@ -357,7 +357,13 @@ describe('updating an episode', () => {
       title: 'Old title',
       state: 'live',
       season: 1,
-      files: { audio: 'audio/mpeg', transcripts: ['text/vtt'], chapters: false, cover: false },
+      files: {
+        audio: 'audio/mpeg',
+        transcripts: ['text/vtt'],
+        chapters: false,
+        cover: false,
+        thumbnail: false,
+      },
     });
     expect((await call('GET', '/shows/cc/catalog/0000000000000000')).statusCode).toBe(404);
     expect((await call('GET', '/shows/cc/catalog/nope')).statusCode).toBe(400);

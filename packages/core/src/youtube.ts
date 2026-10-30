@@ -165,6 +165,8 @@ export const UploadState = z.object({
   videoId: z.string().optional(),
   /** `youtubeMetadataHash` of the metadata the upload was started with. */
   metadataHash: z.string().optional(),
+  /** Key of the image set as the thumbnail. */
+  thumbnailKey: z.string().optional(),
   warnings: z.array(z.string()).default([]),
   error: z.string().optional(),
   startedAt: z.iso.datetime(),

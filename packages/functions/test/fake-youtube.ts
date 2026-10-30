@@ -17,6 +17,10 @@ export class FakeYouTube {
   videos = new Map<string, { metadata: Session['metadata']; bytes: Buffer }>();
   calls: { method: string; path: string }[] = [];
   thumbnails: string[] = [];
+  /** The image each thumbnail was set from, in the same order. */
+  thumbnailBodies: string[] = [];
+  /** Fail thumbnail uploads with this HTTP status (e.g. 403 for an unverified channel). */
+  failThumbnail?: number;
   captions: { videoId: string; body: string }[] = [];
   playlist: { playlistId: string; videoId: string }[] = [];
   statusUpdates: { id: string; status: Record<string, unknown> }[] = [];
@@ -110,7 +114,10 @@ export class FakeYouTube {
       return { status: 200, body: { id, status } };
     }
     if (url.pathname === '/upload/youtube/v3/thumbnails/set') {
+      if (this.failThumbnail)
+        return { status: this.failThumbnail, body: { error: { message: 'no' } } };
       this.thumbnails.push(url.searchParams.get('videoId')!);
+      this.thumbnailBodies.push(body.toString());
       return { status: 200, body: {} };
     }
     if (url.pathname === '/upload/youtube/v3/captions') {

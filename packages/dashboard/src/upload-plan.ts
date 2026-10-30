@@ -1,5 +1,5 @@
 /** What each picker on the upload form is for, and the bundle name its file gets. */
-export type Slot = 'media' | 'transcript' | 'chapters' | 'cover' | 'audiogram';
+export type Slot = 'media' | 'transcript' | 'chapters' | 'cover' | 'thumbnail' | 'audiogram';
 
 export interface Picked {
   slot: Slot;
@@ -20,6 +20,7 @@ const ALLOWED: Record<Slot, string[]> = {
   transcript: ['vtt', 'srt', 'json'],
   chapters: ['json'],
   cover: ['jpg', 'jpeg', 'png'],
+  thumbnail: ['jpg', 'jpeg', 'png'],
   audiogram: ['mp4'],
 };
 

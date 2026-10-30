@@ -155,6 +155,8 @@ export const EpisodeManifest = z.object({
   episode: z.number().int().positive().optional(),
   explicit: z.boolean().optional(),
   image: AssetRef.optional(),
+  /** YouTube thumbnail (16:9). Not in the feed; YouTube gets `image` without it. */
+  thumbnail: AssetRef.optional(),
   enclosure: Enclosure,
   alternateEnclosures: z.array(AlternateEnclosure).default([]),
   transcripts: z.array(Transcript).default([]),
@@ -172,6 +174,8 @@ export const EpisodeManifest = z.object({
       publishAt: z.iso.datetime().optional(),
       /** Hash of the title, description, tags and category last sent to YouTube. */
       metadataHash: z.string().optional(),
+      /** Key of the image last set as the thumbnail, to resend it when it changes. */
+      thumbnailKey: z.string().optional(),
     })
     .optional(),
   /** YouTube title and description overriding the feed's, from `--yt-title`/`--yt-description`. */

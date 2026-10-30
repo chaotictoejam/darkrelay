@@ -10,6 +10,7 @@ describe('classifyBundle', () => {
       'transcript.srt',
       'chapters.json',
       'cover.jpg',
+      'thumbnail.png',
       'video.mp4',
       'notes.txt',
     ]);
@@ -19,6 +20,7 @@ describe('classifyBundle', () => {
       video: 'video.mp4',
       chapters: 'chapters.json',
       cover: 'cover.jpg',
+      thumbnail: 'thumbnail.png',
       transcripts: [
         { file: 'transcript.vtt', type: 'text/vtt' },
         { file: 'transcript.srt', type: 'application/x-subrip' },

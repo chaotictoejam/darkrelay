@@ -58,6 +58,8 @@ export interface BundleFiles {
   transcripts: { file: string; type: string }[];
   chapters?: string;
   cover?: string;
+  /** YouTube thumbnail (16:9). Absent: YouTube gets the cover. */
+  thumbnail?: string;
 }
 
 export interface ClassifyResult {
@@ -83,7 +85,7 @@ export function classifyBundle(names: string[]): ClassifyResult {
   const files: BundleFiles = { transcripts: [] };
   const errors: string[] = [];
   const ignored: string[] = [];
-  const set = (role: 'audio' | 'video' | 'chapters' | 'cover', name: string) => {
+  const set = (role: 'audio' | 'video' | 'chapters' | 'cover' | 'thumbnail', name: string) => {
     if (files[role]) errors.push(`More than one ${role} file: ${files[role]}, ${name}`);
     else files[role] = name;
   };
@@ -100,6 +102,8 @@ export function classifyBundle(names: string[]): ClassifyResult {
     else if (lower === 'chapters.json') set('chapters', name);
     else if (lower === 'cover.jpg' || lower === 'cover.jpeg' || lower === 'cover.png')
       set('cover', name);
+    else if (lower === 'thumbnail.jpg' || lower === 'thumbnail.jpeg' || lower === 'thumbnail.png')
+      set('thumbnail', name);
     else if (TRANSCRIPT_TYPES[lower])
       files.transcripts.push({ file: name, type: TRANSCRIPT_TYPES[lower] });
     else ignored.push(name);

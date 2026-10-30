@@ -110,13 +110,14 @@ npx darkrelay publish ep13.mp3 --show my-show --title "Episode 13" --notes notes
 npx darkrelay episodes my-show            # live / scheduled / hidden, and the next release
 npx darkrelay episode reschedule my-show <guid> --pub-date "2026-10-21 06:00"
 npx darkrelay episode reschedule my-show <guid> --pub-date now     # release immediately
+npx darkrelay episode cover-to-thumbnail my-show [<guid>]          # artwork was for YouTube: apps show the show artwork
 ```
 
 `--pub-date` takes `"YYYY-MM-DD HH:mm"` in your local time zone, ISO with a zone (`2026-10-20T10:00Z`, `2026-10-20T06:00-04:00`), or `now`. A bare date is refused, because it would silently mean midnight UTC.
 
 How it works: the episode is stored and its media uploaded right away, but it stays out of the feed until its time. Every feed rebuild sets a one-shot EventBridge Scheduler job for the show's next release (5 seconds after it), which rebuilds the feed, invalidates the CDN copy and pings Podcast Index. The hourly sweep is a backup if a schedule is ever missed. Before release, the media is only reachable by its unlisted URL, which appears nowhere until the feed lists it. Moving an already-released episode into the future would pull it from the feed, so `reschedule` asks for `--force`. Scheduler is free at this volume (14 million invocations a month).
 
-`publish` saves `<file>.episode.json` next to the audio. Publishing the same file again updates the episode instead of creating a new one. An update replaces the files its bundle contains and keeps the rest (artwork, transcripts, chapters, video), and a bundle for an existing episode may leave out the audio to change only its details or other files. Run `npx darkrelay --help` for every command.
+`publish` saves `<file>.episode.json` next to the audio. Publishing the same file again updates the episode instead of creating a new one. An update replaces the files its bundle contains and keeps the rest (artwork, thumbnail, transcripts, chapters, video), and a bundle for an existing episode may leave out the audio to change only its details or other files. Run `npx darkrelay --help` for every command.
 
 ### Episode bundles
 
@@ -128,7 +129,8 @@ How it works: the episode is stored and its media uploaded right away, but it st
 | `audio.mp3` or `audio.m4a` | yes, for a new episode | WAV and FLAC are rejected: export MP3 for feeds. |
 | `transcript.vtt` / `.srt` / `.json` | no | Each one becomes a `<podcast:transcript>`. |
 | `chapters.json` | no | Podcasting 2.0 JSON chapters. |
-| `cover.jpg` / `cover.png` | no | Episode artwork. |
+| `cover.jpg` / `cover.png` | no | Episode artwork for podcast apps: square, 1400-3000 px. Without it, apps show the show artwork. |
+| `thumbnail.jpg` / `thumbnail.png` | no | YouTube thumbnail: 16:9, 1280×720, under 2 MB. Not in the feed. Without it, YouTube gets the cover. |
 | `video.mp4` | no | Stored for the video pipeline (phase 3). |
 
 ## Moving a show from another host
@@ -191,7 +193,7 @@ Each show can upload its episode videos to a YouTube channel and pull views, wat
 
 **Setup.** Follow [docs/connecting-youtube.md](docs/connecting-youtube.md) to create the Google Cloud project and OAuth client, connect each channel, and add `youtube` to the show file.
 
-**Uploads.** When an episode with a video publishes (a full video or an audiogram), it uploads to YouTube with the title, show notes as plain text, chapters as description timestamps, captions from the transcript, the episode art as thumbnail, and the playlist. A scheduled episode uploads right away as private with YouTube's `publishAt`, and moves if you reschedule the episode. Uploads resume across Lambda invocations, so long videos are fine. `npx darkrelay youtube status <show>` shows each episode's video, progress or error.
+**Uploads.** When an episode with a video publishes (a full video or an audiogram), it uploads to YouTube with the title, show notes as plain text, chapters as description timestamps, captions from the transcript, the episode's `thumbnail` (or its artwork, without one) as thumbnail, and the playlist. A scheduled episode uploads right away as private with YouTube's `publishAt`, and moves if you reschedule the episode. Uploads resume across Lambda invocations, so long videos are fine. `npx darkrelay youtube status <show>` shows each episode's video, progress or error.
 
 **YouTube's own title and description.** By default the video gets the episode title and the show notes. To write them for YouTube instead (a title for search, a plain-text description with timestamps and hashtags), add them to `publish`:
 
@@ -276,11 +278,11 @@ Users created before roles existed have no role and see nothing. Delete them wit
 
 ### Uploading from the dashboard
 
-Uploaders and admins get an **Upload episode** page: show, title, show notes (HTML), release time (now, or a date and time in the browser's time zone), season, episode number, type, explicit, and files (audio or a video episode, plus optional transcript, chapters, artwork and an audiogram video). It produces the same bundle as `darkrelay publish`, so publishing, video processing and YouTube uploads work the same way, and the page follows the result through to published, scheduled or rejected.
+Uploaders and admins get an **Upload episode** page: show, title, show notes (HTML), release time (now, or a date and time in the browser's time zone), season, episode number, type, explicit, and files (audio or a video episode, plus optional transcript, chapters, artwork, YouTube thumbnail and an audiogram video). It produces the same bundle as `darkrelay publish`, so publishing, video processing and YouTube uploads work the same way, and the page follows the result through to published, scheduled or rejected.
 
 The browser sends the files straight to S3 as multipart uploads, so multi-GB videos are fine and nothing needs AWS credentials. The API hands out presigned URLs for one part at a time (valid 15 minutes, only for that bundle's files under `inbox/<show>/<bundleId>/`), failed parts are retried, and **Retry** resumes from the parts already sent. The API writes `episode.json` itself, last, after checking it against the bundle schema. The episode length is read in the browser; if it can't read the file, the page asks for it.
 
-**Editing episodes.** _Manage episodes_ on a show's page lists every episode, including scheduled and hidden ones. Editing one changes its details, release time or visibility, and can replace any of its files (audio, transcript, chapters, artwork, audiogram) without re-uploading the rest. Moving an episode that is already out back into the future asks for confirmation first, as `episode reschedule --force` does. A new audio file doesn't re-upload the YouTube video; the title and description still sync to it. Edits go through the publisher as a bundle, like everything else, so the dashboard API never writes outside `inbox/`.
+**Editing episodes.** _Manage episodes_ on a show's page lists every episode, including scheduled and hidden ones. Editing one changes its details, release time or visibility, and can replace any of its files (audio, transcript, chapters, artwork, thumbnail, audiogram) without re-uploading the rest. Moving an episode that is already out back into the future asks for confirmation first, as `episode reschedule --force` does. A new audio file doesn't re-upload the YouTube video; the title and description still sync to it, and so does a new thumbnail. Edits go through the publisher as a bundle, like everything else, so the dashboard API never writes outside `inbox/`.
 
 To run the download or YouTube pulls yourself (catch up, backfill, or check the logs are readable), see [docs/running-analytics.md](docs/running-analytics.md).
 

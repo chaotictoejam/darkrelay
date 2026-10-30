@@ -256,6 +256,25 @@ async function upload(
   return 'uploaded';
 }
 
+/** The image YouTube gets as the thumbnail: the episode's thumbnail, else its artwork. */
+export function thumbnailKeyOf(manifest: EpisodeManifest): string | undefined {
+  for (const ref of [manifest.thumbnail, manifest.image]) if (ref && 'key' in ref) return ref.key;
+  return undefined;
+}
+
+async function setThumbnail(deps: UploadDeps, yt: YouTube, videoId: string, image: string) {
+  const key = publicKey(image);
+  const head = await deps.store.head(key);
+  if (!head) throw new Error(`Image missing: ${key}`);
+  await yt.setThumbnail(
+    videoId,
+    await deps.store.getRange(key, 0, head.size - 1),
+    contentTypeFor(key),
+  );
+}
+
+const THUMBNAIL_WARNING = 'Thumbnail (custom thumbnails need a verified channel)';
+
 /** Thumbnail, captions and playlist. Each is best effort: a failure is a warning, not a failed upload. */
 async function addExtras(
   deps: UploadDeps,
@@ -272,17 +291,11 @@ async function addExtras(
       state.warnings.push(`${what}: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
-  const image = manifest.image && 'key' in manifest.image ? manifest.image.key : undefined;
+  const image = thumbnailKeyOf(manifest);
   if (image) {
-    await attempt('Thumbnail (custom thumbnails need a verified channel)', async () => {
-      const key = publicKey(image);
-      const head = await deps.store.head(key);
-      if (!head) return;
-      await yt.setThumbnail(
-        videoId,
-        await deps.store.getRange(key, 0, head.size - 1),
-        contentTypeFor(key),
-      );
+    await attempt(THUMBNAIL_WARNING, async () => {
+      await setThumbnail(deps, yt, videoId, image);
+      state.thumbnailKey = image;
     });
   }
   const transcript =
@@ -321,6 +334,7 @@ async function linkVideo(
       linkedAt: now.toISOString(),
       publishAt: scheduled ? new Date(manifest.pubDate).toISOString() : undefined,
       metadataHash: state.metadataHash,
+      thumbnailKey: state.thumbnailKey,
     },
     updatedAt: now.toISOString(),
   });
@@ -334,7 +348,8 @@ async function linkVideo(
  * scheduled video's publishAt (released videos are left alone). Changed
  * metadata updates the title and description, but only of videos DarkRelay
  * uploaded: a linked video was made elsewhere, and is only written to by
- * `darkrelay youtube sync --force`.
+ * `darkrelay youtube sync --force`. A new thumbnail or artwork is sent to
+ * uploaded videos too.
  */
 async function syncVideo(
   deps: UploadDeps,
@@ -398,8 +413,34 @@ async function syncVideo(
     if (pushed || baseline) next.metadataHash = hash;
   }
 
+  // Uploads from before thumbnailKey was kept were given the artwork.
+  const image = thumbnailKeyOf(manifest);
+  const sentImage =
+    yt.thumbnailKey ?? (manifest.image && 'key' in manifest.image ? manifest.image.key : undefined);
+  if (uploaded && image && image !== sentImage) {
+    try {
+      await setThumbnail(deps, await youtube(), yt.videoId, image);
+      next.thumbnailKey = image;
+      pushed = true;
+      deps.log('Updated YouTube thumbnail', { videoId: yt.videoId });
+    } catch (e) {
+      // Best effort, as on upload; tried again the next time the episode changes.
+      const message = e instanceof Error ? e.message : String(e);
+      deps.log('YouTube thumbnail update failed', { videoId: yt.videoId, error: message });
+      const warning = `${THUMBNAIL_WARNING}: ${message}`;
+      if (!state!.warnings.includes(warning)) {
+        state!.warnings.push(warning);
+        await save(deps.store, stateKey, state!, now);
+      }
+    }
+  }
+
   const scheduleMoved = next.publishAt !== yt.publishAt;
-  if (scheduleMoved || next.metadataHash !== yt.metadataHash) {
+  if (
+    scheduleMoved ||
+    next.metadataHash !== yt.metadataHash ||
+    next.thumbnailKey !== yt.thumbnailKey
+  ) {
     const updated = EpisodeManifest.parse({
       ...manifest,
       youtube: next,

@@ -27,6 +27,7 @@ export interface PublishFlags {
   transcript?: string;
   chapters?: string;
   cover?: string;
+  thumbnail?: string;
   video?: string;
   ytTitle?: string;
   /** File with the YouTube description (plain text). */
@@ -82,6 +83,7 @@ export async function planBundle(
   extra('transcript', flags.transcript);
   extra('chapters', flags.chapters);
   extra('cover', flags.cover);
+  extra('thumbnail', flags.thumbnail);
   extra('video', flags.video);
 
   const { files: roles, errors, ignored } = classifyBundle(files.map((f) => f.name));

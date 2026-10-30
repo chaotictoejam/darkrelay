@@ -156,16 +156,20 @@ describe('publishing a bundle', () => {
       'transcript.vtt': 'WEBVTT',
       'chapters.json': JSON.stringify({ version: '1.2.0', chapters: [{ startTime: 0 }] }),
       'cover.jpg': 'img',
+      'thumbnail.jpg': 'wide',
       'episode.json': episodeJson(),
     });
     const key = (await store.list(layout.episodesPrefix('show')))[0]!.key;
     const before = store.json(key);
+    expect(before.thumbnail.key).toContain('/b1/thumbnail.jpg');
+    // YouTube's alone: the feed keeps the square artwork.
+    expect(store.text(feedKey)).not.toContain('thumbnail');
 
     const result = await upload('b2', { 'episode.json': episodeJson({ title: 'Renamed' }) });
     expect(result).toMatchObject({ status: 'published', guid: 'guid-1' });
     const after = store.json(key);
     expect(after.title).toBe('Renamed');
-    for (const field of ['enclosure', 'transcripts', 'chapters', 'image'])
+    for (const field of ['enclosure', 'transcripts', 'chapters', 'image', 'thumbnail'])
       expect(after[field]).toEqual(before[field]);
     expect(store.text(feedKey)).toContain('Renamed');
   });
@@ -180,6 +184,7 @@ describe('publishing a bundle', () => {
     const key = (await store.list(layout.episodesPrefix('show')))[0]!.key;
     const m = store.json(key);
     expect(m.enclosure.asset.key).toContain('/b1/audio.mp3');
+    expect(m.thumbnail).toBeUndefined();
     expect(m.transcripts).toEqual([
       expect.objectContaining({ asset: { key: expect.stringContaining('/b2/transcript.srt') } }),
     ]);

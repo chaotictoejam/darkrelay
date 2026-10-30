@@ -327,6 +327,7 @@ function describeFiles(f: EpisodeDetails['files']) {
     parts.push(`${t.split('/').pop()!.replace('x-subrip', 'SRT').toUpperCase()} transcript`);
   if (f.chapters) parts.push('chapters');
   if (f.cover) parts.push('artwork');
+  if (f.thumbnail) parts.push('YouTube thumbnail');
   return parts.join(', ');
 }
 
@@ -449,7 +450,12 @@ function episodeForm(
     ),
     field('Transcript', picker('transcript'), `${optional}VTT, SRT or Podcasting 2.0 JSON`),
     field('Chapters', picker('chapters'), `${optional}Podcasting 2.0 JSON`),
-    field('Episode artwork', picker('cover'), `${optional}JPEG or PNG`),
+    field('Episode artwork', picker('cover'), `${optional}Square JPEG or PNG, 1400-3000 px`),
+    field(
+      'YouTube thumbnail',
+      picker('thumbnail'),
+      `${optional}16:9 JPEG or PNG, 1280×720, under 2 MB. Without one, YouTube gets the artwork`,
+    ),
     field(
       'Audiogram video',
       picker('audiogram'),

@@ -107,6 +107,8 @@ beforeEach(() => {
   fake.sessions.clear();
   fake.videos.clear();
   fake.thumbnails = [];
+  fake.thumbnailBodies = [];
+  fake.failThumbnail = undefined;
   fake.captions = [];
   fake.playlist = [];
   fake.statusUpdates = [];
@@ -153,6 +155,8 @@ describe('YouTube upload', () => {
     });
 
     expect(fake.thumbnails).toEqual([videoId]);
+    expect(fake.thumbnailBodies).toEqual(['jpg']);
+    expect(manifest().youtube?.thumbnailKey).toBe(`hcu/${ID}/b1/cover.jpg`);
     expect(fake.captions[0]).toMatchObject({ videoId });
     expect(fake.captions[0]!.body).toContain('WEBVTT');
     expect(fake.playlist).toEqual([{ playlistId: 'PL1', videoId }]);
@@ -359,5 +363,81 @@ describe('YouTube metadata', () => {
 
     fake.failSnippet = undefined;
     expect(await onEpisodeChanged(deps, ev)).toBe('synced');
+  });
+});
+
+describe('YouTube thumbnail', () => {
+  const ev = { show: 'hcu', episodeId: ID };
+  const rewrite = (patch: Record<string, unknown>) =>
+    store.seed(layout.episodeManifest('hcu', ID), JSON.stringify({ ...manifest(), ...patch }));
+  const thumbnail = (bundle: string, body: string) => {
+    store.seed(`public/hcu/${ID}/${bundle}/thumbnail.png`, body);
+    return { key: `hcu/${ID}/${bundle}/thumbnail.png` };
+  };
+
+  it('uses the 16:9 thumbnail over the square artwork', async () => {
+    seed({ manifest: { thumbnail: thumbnail('b1', 'wide') } });
+    expect(await onEpisodeChanged(deps, ev)).toBe('uploaded');
+    expect(fake.thumbnailBodies).toEqual(['wide']);
+    expect(manifest().youtube?.thumbnailKey).toBe(`hcu/${ID}/b1/thumbnail.png`);
+  });
+
+  it('sends a new thumbnail to an uploaded video once', async () => {
+    seed();
+    await onEpisodeChanged(deps, ev);
+    rewrite({ thumbnail: thumbnail('b2', 'wide') });
+    expect(await onEpisodeChanged(deps, ev)).toBe('synced');
+    expect(fake.thumbnailBodies).toEqual(['jpg', 'wide']);
+    expect(await onEpisodeChanged(deps, ev)).toBe('already');
+    expect(fake.thumbnails).toHaveLength(2);
+  });
+
+  it('assumes videos uploaded before thumbnailKey was kept have the artwork', async () => {
+    const legacy = { youtube: { videoId: 'vidOld', linkedAt: '2026-10-01T00:00:00Z' } };
+    seed({ manifest: legacy });
+    store.seed(
+      layout.youtubeUpload('hcu', ID),
+      JSON.stringify({
+        state: 'done',
+        videoId: 'vidOld',
+        offset: 0,
+        warnings: [],
+        startedAt: '2026-10-01T00:00:00Z',
+        updatedAt: '2026-10-01T00:00:00Z',
+      }),
+    );
+    await onEpisodeChanged(deps, ev);
+    expect(fake.thumbnails).toEqual([]);
+
+    rewrite({ youtube: manifest().youtube, thumbnail: thumbnail('b2', 'wide') });
+    expect(await onEpisodeChanged(deps, ev)).toBe('synced');
+    expect(fake.thumbnails).toEqual(['vidOld']);
+  });
+
+  it('leaves linked videos alone', async () => {
+    seed({
+      manifest: {
+        youtube: { videoId: 'linked00001', linkedAt: '2026-10-01T00:00:00Z' },
+        thumbnail: thumbnail('b1', 'wide'),
+      },
+    });
+    expect(await onEpisodeChanged(deps, { ...ev, pushMetadata: true })).toBe('synced');
+    expect(fake.thumbnails).toEqual([]);
+  });
+
+  it('warns once when the thumbnail fails, and tries again on the next change', async () => {
+    seed();
+    await onEpisodeChanged(deps, ev);
+    fake.failThumbnail = 403;
+    rewrite({ thumbnail: thumbnail('b2', 'wide') });
+    expect(await onEpisodeChanged(deps, ev)).toBe('already');
+    rewrite({ updatedAt: '2026-10-13T00:00:00Z' });
+    await onEpisodeChanged(deps, ev);
+    expect(state().warnings.filter((w: string) => w.startsWith('Thumbnail'))).toHaveLength(1);
+
+    fake.failThumbnail = undefined;
+    rewrite({ updatedAt: '2026-10-14T00:00:00Z' });
+    expect(await onEpisodeChanged(deps, ev)).toBe('synced');
+    expect(fake.thumbnailBodies).toEqual(['jpg', 'wide']);
   });
 });

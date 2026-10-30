@@ -263,6 +263,7 @@ async function episodeDetails(deps: UploadDeps, show: string, id: string): Promi
         transcripts: e.transcripts.map((t) => t.type),
         chapters: e.chapters !== undefined,
         cover: e.image !== undefined,
+        thumbnail: e.thumbnail !== undefined,
       },
       youtube: e.youtube ? { videoId: e.youtube.videoId } : undefined,
     },

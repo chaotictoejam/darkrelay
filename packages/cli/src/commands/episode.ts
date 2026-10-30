@@ -23,6 +23,49 @@ export async function setEpisodeStatus(
   console.log(`${manifest.title}: ${status}. Feed rebuild requested.`);
 }
 
+/**
+ * Turns episode artwork into the YouTube thumbnail only, for episodes whose
+ * artwork was made for YouTube: podcast apps then show the show artwork.
+ * YouTube already has the image, so nothing is sent to it.
+ */
+export async function coverToThumbnail(
+  slug: string,
+  guid: string | undefined,
+  flags: { dryRun?: boolean },
+  global: GlobalOptions,
+) {
+  const bucket = new Bucket((await resolveDeployment(global)).bucket);
+  const episodes = (await loadEpisodes(bucket, slug)).filter((e) => !guid || e.guid === guid);
+  if (guid && !episodes.length) throw new Error(`No episode with guid "${guid}" in ${slug}`);
+  let moved = 0;
+  for (const manifest of episodes) {
+    if (!manifest.image || manifest.thumbnail) continue;
+    const image = manifest.image;
+    moved++;
+    console.log(`${manifest.title}: artwork becomes the YouTube thumbnail.`);
+    if (flags.dryRun) continue;
+    const updated: EpisodeManifest = {
+      ...manifest,
+      image: undefined,
+      thumbnail: image,
+      // Already the video's thumbnail; recorded so it isn't sent again.
+      youtube: manifest.youtube && {
+        ...manifest.youtube,
+        thumbnailKey: manifest.youtube.thumbnailKey ?? ('key' in image ? image.key : undefined),
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    await bucket.putText(
+      layout.episodeManifest(slug, episodeId(manifest.guid)),
+      JSON.stringify(updated, null, 2),
+    );
+  }
+  if (!moved) return console.log('Nothing to change.');
+  if (flags.dryRun) return console.log(`${moved} episodes would change (dry run).`);
+  await bucket.putText(layout.rebuildRequest(slug), '', 'text/plain');
+  console.log(`${moved} episodes changed. Feed rebuild requested.`);
+}
+
 /** Lists episodes newest first, marking what is live, scheduled or hidden. */
 export async function listEpisodes(slug: string, global: GlobalOptions) {
   const bucket = new Bucket((await resolveDeployment(global)).bucket);

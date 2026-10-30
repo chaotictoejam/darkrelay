@@ -1,6 +1,11 @@
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
-import { listEpisodes, rescheduleEpisode, setEpisodeStatus } from './commands/episode';
+import {
+  coverToThumbnail,
+  listEpisodes,
+  rescheduleEpisode,
+  setEpisodeStatus,
+} from './commands/episode';
 import { checkAnalytics, runAnalytics } from './commands/analytics';
 import {
   ROLES,
@@ -59,7 +64,11 @@ program
   .option('--guid <guid>', 'update an existing episode')
   .option('--transcript <file>', 'VTT, SRT or Podcasting 2.0 JSON')
   .option('--chapters <file>', 'Podcasting 2.0 JSON chapters')
-  .option('--cover <file>', 'episode artwork')
+  .option('--cover <file>', 'episode artwork for podcast apps (square, 1400-3000 px)')
+  .option(
+    '--thumbnail <file>',
+    'YouTube thumbnail (16:9, 1280x720, under 2 MB); default: the cover',
+  )
   .option('--video <file>', 'video alongside the audio (e.g. an audiogram for YouTube)')
   .option('--yt-title <title>', 'YouTube title, if different from the episode title')
   .option(
@@ -137,6 +146,13 @@ episode
   .command('unhide <slug> <guid>')
   .description('Put a hidden episode back in the feed')
   .action((slug, guid) => setEpisodeStatus(slug, guid, 'published', g()));
+episode
+  .command('cover-to-thumbnail <slug> [guid]')
+  .description(
+    'Use episode artwork only as the YouTube thumbnail, so apps show the show artwork (all episodes without a guid)',
+  )
+  .option('--dry-run', 'list the episodes it would change')
+  .action((slug, guid, o) => coverToThumbnail(slug, guid, o, g()));
 
 const yt = program.command('youtube').description('YouTube uploads and analytics');
 yt.command('client')

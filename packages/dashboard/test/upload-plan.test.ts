@@ -11,6 +11,7 @@ describe('planFiles', () => {
         { slot: 'transcript', file: f('ep12.srt') },
         { slot: 'chapters', file: f('chapters-v2.json') },
         { slot: 'cover', file: f('art.JPEG') },
+        { slot: 'thumbnail', file: f('yt.png') },
         { slot: 'audiogram', file: f('gram.mp4') },
       ]),
     ).toEqual({
@@ -20,6 +21,7 @@ describe('planFiles', () => {
         { slot: 'transcript', name: 'transcript.srt', size: 10 },
         { slot: 'chapters', name: 'chapters.json', size: 10 },
         { slot: 'cover', name: 'cover.jpeg', size: 10 },
+        { slot: 'thumbnail', name: 'thumbnail.png', size: 10 },
         { slot: 'audiogram', name: 'video.mp4', size: 10 },
       ],
     });
