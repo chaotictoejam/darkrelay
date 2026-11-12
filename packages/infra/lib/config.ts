@@ -34,6 +34,21 @@ export const DeploymentConfig = z.object({
   logs: z
     .object({ retentionDays: z.number().int().positive().default(90) })
     .default({ retentionDays: 90 }),
+  /** Just-in-time uploads of Shorts and other scheduled content. */
+  shorts: z
+    .object({
+      /**
+       * How many days before its slot a video is uploaded. Long enough for
+       * YouTube to process it and for a failure to be noticed and retried.
+       */
+      leadDays: z.number().int().min(0).max(30).default(3),
+      /**
+       * Uploads per channel per day. A YouTube upload costs 1,600 of the
+       * default 10,000 daily quota units, so six is the ceiling.
+       */
+      dailyUploads: z.number().int().min(1).max(6).default(5),
+    })
+    .default({ leadDays: 3, dailyUploads: 5 }),
   /** Fargate size for video transcoding. Bigger is faster; Spot price scales with it. */
   transcoder: z
     .object({

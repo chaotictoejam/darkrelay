@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { manyBrands, oneBrand } from '../src/brands';
+import { ShortsManifest } from '@darkrelay/core';
 import { buildOutlet, catalogEntries, iconKey, planMigration } from '../src/commands/brand';
+import { planBatch } from '../src/commands/shorts';
 
 const NOW = new Date('2026-11-12T10:00:00Z');
 
@@ -129,5 +131,31 @@ describe('iconKey', () => {
     expect(a).toMatch(/^cc\/icon-[0-9a-f]{8}\.png$/);
     expect(a).not.toBe(b);
     expect(iconKey('cc', new Uint8Array([1]), 'ICON.JPEG')).toMatch(/\.jpg$/);
+  });
+});
+
+describe('planBatch', () => {
+  const manifest = (shorts: { file: string; title: string; thumbnail?: string }[]) =>
+    ShortsManifest.parse({ schemaVersion: 1, shorts });
+
+  it('carries every video and every thumbnail the manifest names, once', () => {
+    const plan = planBatch(
+      manifest([
+        { file: 'a.mp4', title: 'A', thumbnail: 'cover.jpg' },
+        { file: 'b.mp4', title: 'B', thumbnail: 'cover.jpg' },
+      ]),
+      '/batch',
+    );
+    expect(plan.files.map((f) => f.name)).toEqual(['a.mp4', 'cover.jpg', 'b.mp4']);
+    expect(plan.files[0]!.path).toBe('/batch/a.mp4');
+  });
+
+  it('refuses paths, so a batch cannot reach outside its own directory', () => {
+    expect(() => planBatch(manifest([{ file: '../secrets.mp4', title: 'A' }]), '/batch')).toThrow(
+      /named without a path/,
+    );
+    expect(() => planBatch(manifest([{ file: 'sub/a.mp4', title: 'A' }]), '/batch')).toThrow(
+      /named without a path/,
+    );
   });
 });

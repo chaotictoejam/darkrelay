@@ -14,7 +14,7 @@ import type { Construct } from 'constructs';
 import type { DeploymentConfig } from '../config';
 import { nodeFunction } from '../lambda';
 import { Transcoder } from '../transcoder';
-import { youtubeUploader } from '../youtube';
+import { shortsScheduler, youtubeUploader } from '../youtube';
 
 export interface PublishStackProps extends StackProps {
   mediaBucket: s3.IBucket;
@@ -86,6 +86,7 @@ export class PublishStack extends Stack {
     this.publisher.node.addDependency(scheduleGroup);
 
     youtubeUploader(this, props.config, props.mediaBucket);
+    shortsScheduler(this, props.config, props.mediaBucket);
 
     new Transcoder(this, 'Transcoder', {
       config: props.config,

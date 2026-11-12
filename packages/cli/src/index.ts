@@ -29,6 +29,14 @@ import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
 import { bundleStatus, publish } from './commands/publish';
 import { getShow, putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
+import {
+  batchStatus,
+  listShorts,
+  putShorts,
+  scheduleShort,
+  sweepShorts,
+  uploadShortNow,
+} from './commands/shorts';
 import { validate } from './commands/validate';
 import * as youtube from './commands/youtube';
 import { OUTLET_KINDS } from '@darkrelay/core';
@@ -220,6 +228,48 @@ episode
   )
   .option('--dry-run', 'list the episodes it would change')
   .action((slug, guid, o) => coverToThumbnail(slug, guid, o, g()));
+
+const shorts = program
+  .command('shorts')
+  .description('Videos and Shorts: content that is not an episode')
+  .addHelpText(
+    'after',
+    `
+A batch is a directory holding shorts.json and the video files it names.
+Uploading one records each Short against the brand; nothing goes to YouTube
+until a few days before its slot, as a private video with a publishAt.`,
+  );
+shorts
+  .command('put <dir>')
+  .description('Upload a batch of Shorts (a directory with shorts.json)')
+  .option('--brand <slug>', 'the brand they belong to')
+  .addOption(new Option('--show <slug>', 'old name of --brand'))
+  .option('--dry-run', 'list what would be uploaded')
+  .option('--no-wait', "don't wait for the ingest result")
+  .action((dir, o) => putShorts(dir, o, g()));
+shorts
+  .command('list <brand>')
+  .description("A brand's videos and Shorts, their slots and where each one stands")
+  .action((brand) => listShorts(brand, g()));
+shorts
+  .command('batch <brand> <batchId>')
+  .description('The result of an earlier batch upload')
+  .action((brand, batchId) => batchStatus(brand, batchId, g()));
+shorts
+  .command('schedule <brand> <id>')
+  .description('Give one a slot, or move it ("now" releases it immediately)')
+  .requiredOption('--at <when>', '"YYYY-MM-DD HH:mm" (local), ISO with a zone, or "now"')
+  .action((brand, id, o) => scheduleShort(brand, id, o, g()));
+shorts
+  .command('upload <brand> <id>')
+  .description('Upload one now, ahead of its slot')
+  .action((brand, id, o) => uploadShortNow(brand, id, o, g()));
+shorts
+  .command('sweep')
+  .description('Run the hourly pass now: upload what is due, move what changed')
+  .option('--lead-days <n>', 'how far ahead of its slot to upload')
+  .option('--daily-uploads <n>', 'cap per channel per day (quota protection)')
+  .action((o) => sweepShorts(o, g()));
 
 const yt = program.command('youtube').description('YouTube uploads and analytics');
 yt.command('client')

@@ -97,6 +97,42 @@ Shorts are identified by YouTube's own `creatorContentType`, not by duration —
 
 A channel that is not connected yet, or whose token has been revoked, is logged and skipped: the other outlets and the other brands still run.
 
+### Videos and Shorts
+
+Not everything a brand publishes is an episode. A **video** or a **Short** belongs to the brand, goes to one of its outlets, and has no feed: there is nothing to put an RSS item in, and no reason for a public URL to exist before the platform publishes it.
+
+| Kind | Where its record lives |
+| --- | --- |
+| `episode` | Its own manifest, as always. The feed is built from those, and nothing here changes that. |
+| `video`, `short` | `catalog/<brand>/content/<id>.json`, with the media private beside it. |
+
+A Short may name the episode it was clipped from (`parentId`); a standalone Short names nothing, which is a normal thing for it to be.
+
+**A batch** is a directory holding `shorts.json` and the files it names. Copy `examples/shorts.example.json` to start:
+
+```bash
+npx darkrelay shorts put ./december-clips --brand my-brand --dry-run   # look first
+npx darkrelay shorts put ./december-clips --brand my-brand
+npx darkrelay shorts list my-brand
+```
+
+The media and the manifest go to the inbox the way an episode bundle does, and the manifest goes last, because its arrival is what starts the ingest. A batch is all-or-nothing: if one entry names a file that is not there, or a `parentId` that matches no episode, nothing is written at all. Re-uploading a batch refreshes the copy but never rewinds an outlet that already has the video.
+
+**Nothing is uploaded when you put a batch.** Each Short goes to YouTube a few days before its slot, as a private video with `publishAt`, and YouTube makes it public at that moment:
+
+```bash
+npx darkrelay shorts schedule my-brand bus-factor-clip-1a2b3c4d --at "2026-12-01 12:00"
+npx darkrelay shorts schedule my-brand bus-factor-clip-1a2b3c4d --at now   # release it now
+npx darkrelay shorts upload my-brand bus-factor-clip-1a2b3c4d              # upload ahead of the slot
+npx darkrelay shorts sweep --lead-days 5                                   # run the hourly pass now
+```
+
+An hourly sweep uploads whatever is due, moves anything whose slot changed since it was uploaded, and **stops at five uploads per channel per day**. That cap is the point: a YouTube upload costs 1,600 of the default 10,000 daily quota units, so six is the ceiling, and a quarter's worth of Shorts must never go up at once. Items held back are reported and picked up the next day. Both numbers are configurable under `shorts` in `darkrelay.config.json`.
+
+Uploading days ahead is also what makes an hourly pass precise enough: the slot is kept by YouTube, not by the sweep, so an hour of slack before the upload costs nothing.
+
+An item with no slot is never uploaded. Phase 4's planner is what fills slots in for a whole batch; until then, set them in the manifest or with `shorts schedule`.
+
 ## Deploy
 
 Requirements: Node 22+ (npm comes with it), AWS credentials for the target account, and the account [bootstrapped for CDK](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html) in us-east-1.
@@ -124,6 +160,8 @@ Everything deploys to **us-east-1** (CloudFront certificates and log delivery mu
 | `domain` | none | Omit to use the `*.cloudfront.net` domain. |
 | `logs.retentionDays` | `90` | Raw access logs (they contain IP addresses) are deleted after this. |
 | `priceClass` | `100` | CloudFront edge coverage. `100` (North America and Europe) is cheapest. |
+| `shorts.leadDays` | `3` | How many days before its slot a Short is uploaded. |
+| `shorts.dailyUploads` | `5` | Uploads per channel per day. Six is YouTube's quota ceiling. |
 | `tags` | none | Extra tags on every resource, e.g. `{"CostCenter": "podcast"}`. See [Cost Explorer tags](#cost-explorer-tags). |
 
 **Domain with Route 53** (the zone must be in the same account; DNS records and the certificate are created for you):
@@ -438,7 +476,7 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 | Prefix | Public | What |
 | --- | --- | --- |
 | `public/` | yes | Feeds and media. CloudFront's origin path, so `public/` is dropped from URLs. |
-| `catalog/` | no | `brand.json`, `show.json`, episode manifests, draft preview feeds, feed errors. The source of truth. |
+| `catalog/` | no | `brand.json`, `show.json`, episode manifests, content records and their media, draft preview feeds, feed errors. The source of truth. |
 | `inbox/` | no | Uploaded bundles waiting to publish. Expire after 7 days. |
 | `inbox-status/` | no | Publish results the CLI reads. |
 | `requests/` | no | Rebuild requests. |
@@ -451,7 +489,7 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 4. **YouTube upload and analytics** (done)
 5. **Brands and outlets** (done): shows became brands, outlets are the places content goes out
 6. **YouTube channels as outlets** (done): channel metrics, uploads backfill, outlet pages
-7. Videos and Shorts as content kinds, with batch manifests and just-in-time uploads
+7. **Videos and Shorts** (done): content kinds, batch manifests, just-in-time uploads
 8. Slot scoring and a Shorts planner you approve before anything uploads
 9. Dashboard: brand switcher, per-outlet pages, slot heatmap, cross-brand calendar
 10. HLS retention curves

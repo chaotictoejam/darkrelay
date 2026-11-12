@@ -111,3 +111,64 @@ export function youtubeAnalytics(
   });
   return fn;
 }
+
+/**
+ * Shorts and other non-episode content: ingests a batch manifest when it
+ * lands in the inbox, and every hour uploads whatever is due in the next few
+ * days as a private video with a publishAt.
+ *
+ * Uploading days ahead is what makes an hourly pass precise enough, and the
+ * daily cap is what keeps a quarter's worth of Shorts from going up at once:
+ * a YouTube upload costs 1,600 of the default 10,000 daily quota units.
+ */
+export function shortsScheduler(scope: Construct, config: DeploymentConfig, bucket: s3.IBucket) {
+  const name = `${config.stackPrefix}-shorts`;
+  const fn = nodeFunction(scope, 'Shorts', {
+    entry: 'shorts/handler.ts',
+    functionName: name,
+    memorySize: 1024,
+    timeout: Duration.minutes(15),
+    environment: {
+      BUCKET_NAME: bucket.bucketName,
+      SSM_PREFIX: ssmPrefix(config),
+      LEAD_DAYS: String(config.shorts.leadDays),
+      DAILY_UPLOADS: String(config.shorts.dailyUploads),
+    },
+  });
+  bucket.grantRead(fn, 'inbox/*');
+  bucket.grantReadWrite(fn, 'catalog/*');
+  bucket.grantWrite(fn, 'inbox-status/*');
+  grantSecrets(fn, config);
+  // Hands off to itself; the ARN is built from the fixed name to avoid a cycle.
+  fn.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [
+        Stack.of(scope).formatArn({
+          service: 'lambda',
+          resource: 'function',
+          resourceName: name,
+          arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+        }),
+      ],
+    }),
+  );
+  new events.Rule(scope, 'OnShortsBatch', {
+    description: 'A batch of Shorts was uploaded: ingest it',
+    eventPattern: {
+      source: ['aws.s3'],
+      detailType: ['Object Created'],
+      detail: {
+        bucket: { name: [bucket.bucketName] },
+        object: { key: events.Match.wildcard('inbox/*/*/shorts.json') },
+      },
+    },
+    targets: [new eventTargets.LambdaFunction(fn, { retryAttempts: 2 })],
+  });
+  new events.Rule(scope, 'ShortsSweep', {
+    description: 'Upload Shorts whose slot is close, and move any that were rescheduled',
+    schedule: events.Schedule.rate(Duration.hours(1)),
+    targets: [new eventTargets.LambdaFunction(fn, { retryAttempts: 2 })],
+  });
+  return fn;
+}

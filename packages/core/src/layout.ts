@@ -34,9 +34,27 @@ export const layout = {
   inboxStatus: (show: string, bundleId: string) => `inbox-status/${show}/${bundleId}.json`,
   rebuildRequest: (show: string) => `requests/${show}/rebuild`,
   youtubeUpload: (show: string, episodeId: string) => `catalog/${show}/youtube/${episodeId}.json`,
+  /**
+   * Content that is not an episode. The media sits beside its record and
+   * stays private: a video or a Short has no feed, so nothing needs a public
+   * URL before the platform publishes it.
+   */
+  contentPrefix: (brand: string) => `catalog/${brand}/content/`,
+  contentItem: (brand: string, id: string) => `catalog/${brand}/content/${id}.json`,
+  contentMedia: (brand: string, id: string, file: string) =>
+    `catalog/${brand}/content/${id}/${file}`,
+  contentUpload: (brand: string, id: string) => `catalog/${brand}/content/${id}.upload.json`,
 };
 
 const CATALOG_KEY = /^catalog\/([a-z0-9][a-z0-9-]{0,62})\/([^/]+)$/;
+
+/** Brand and content id from a content record's key, for S3 event routing. */
+export function contentKeyParts(key: string): { brand: string; id: string } | undefined {
+  const m = /^catalog\/([a-z0-9][a-z0-9-]{0,62})\/content\/([a-z0-9][a-z0-9-]{0,63})\.json$/.exec(
+    key,
+  );
+  return m ? { brand: m[1]!, id: m[2]! } : undefined;
+}
 
 /**
  * The slug in a catalog key for one file, e.g. `catalog/<slug>/brand.json`.

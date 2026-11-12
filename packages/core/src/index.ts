@@ -1,6 +1,7 @@
 export * from './access';
 export * from './brand';
 export * from './bundle';
+export * from './content';
 export * from './guid';
 export * from './image';
 export * from './layout';
