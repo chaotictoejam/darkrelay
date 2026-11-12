@@ -178,6 +178,13 @@ yt.command('sync <slug> <guid>')
   .description("Send an episode's title and description to its YouTube video now")
   .option('--force', 'also for a video that was linked rather than uploaded by DarkRelay')
   .action((slug, guid, o) => youtube.syncNow(slug, guid, o, g()));
+yt.command('thumbnail <slug> <image> [guids...]')
+  .description(
+    "Set one image as several episodes' YouTube thumbnail (16:9 JPEG or PNG, under 2 MB)",
+  )
+  .option('--through <date>', 'every episode released on or before YYYY-MM-DD, instead of guids')
+  .option('--dry-run', 'list the videos it would change')
+  .action((slug, image, guids, o) => youtube.setThumbnails(slug, image, guids, o, g()));
 yt.command('upload <slug> <guid>')
   .description('Upload one episode now')
   .option('--force', 'upload again even if it already has a video')

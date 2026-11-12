@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
@@ -13,8 +14,10 @@ import {
   EpisodeManifest,
   UploadState,
   YouTube,
+  contentTypeFor,
   episodeId,
   layout,
+  publicKey,
   refreshAccessToken,
   type ClientCredentials,
   type ShowConfig,
@@ -384,6 +387,80 @@ export async function syncNow(
   console.log(
     `Updating https://youtu.be/${manifest.youtube.videoId}. Check it with: darkrelay youtube status ${slug}`,
   );
+}
+
+/** YouTube's limit for custom thumbnails. */
+const THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Sets one image as the YouTube thumbnail of several episodes' videos, linked
+ * or uploaded: the episodes named, or (with --through) every one released on
+ * or before a date. Each episode records it as its thumbnail, so the uploader
+ * doesn't send it again. The feed is unchanged.
+ */
+export async function setThumbnails(
+  slug: string,
+  image: string,
+  guids: string[],
+  flags: { through?: string; dryRun?: boolean },
+  g: GlobalOptions,
+) {
+  const ext = extname(image).toLowerCase();
+  if (!['.jpg', '.jpeg', '.png'].includes(ext)) throw new Error(`${image}: expected JPEG or PNG`);
+  const bytes = await readFile(image);
+  if (bytes.length > THUMBNAIL_MAX_BYTES)
+    throw new Error(`${image} is ${Math.ceil(bytes.length / 1024)} KB; YouTube allows 2 MB`);
+  if (!guids.length && !flags.through) throw new Error('Name episode guids, or use --through');
+  if (flags.through && !/^\d{4}-\d{2}-\d{2}$/.test(flags.through))
+    throw new Error('--through takes a date: YYYY-MM-DD');
+
+  const bucket = new Bucket((await resolveDeployment(g)).bucket);
+  const show = await loadShow(bucket, slug);
+  if (!show) throw new Error(`Show "${slug}" does not exist`);
+  const episodes = (await loadEpisodes(bucket, slug))
+    .filter((e) =>
+      guids.length ? guids.includes(e.guid) : e.pubDate.slice(0, 10) <= flags.through!,
+    )
+    .sort((a, b) => a.pubDate.localeCompare(b.pubDate));
+  const missing = guids.filter((guid) => !episodes.some((e) => e.guid === guid));
+  if (missing.length) throw new Error(`No episode with guid ${missing.join(', ')} in ${slug}`);
+
+  for (const e of episodes) {
+    const video = e.youtube ? `https://youtu.be/${e.youtube.videoId}` : 'no YouTube video, skipped';
+    console.log(`  ${e.pubDate.slice(0, 10)}  ${e.title}  ->  ${video}`);
+  }
+  const linked = episodes.filter((e) => e.youtube);
+  if (flags.dryRun) {
+    console.log(`\n${linked.length} videos would get ${image} (dry run).`);
+    return;
+  }
+
+  const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
+  const key = `${slug}/thumbnail-${hash}${ext}`;
+  await bucket.uploadFile(publicKey(key), image, contentTypeFor(image), 'public, max-age=86400');
+  const yt = await clientFor(show, g);
+  let failed = 0;
+  for (const e of linked) {
+    try {
+      await yt.setThumbnail(e.youtube!.videoId, bytes, contentTypeFor(image));
+    } catch (err) {
+      failed++;
+      console.log(`  failed  ${e.title}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+    const updated: EpisodeManifest = {
+      ...e,
+      thumbnail: { key },
+      youtube: { ...e.youtube!, thumbnailKey: key },
+      updatedAt: new Date().toISOString(),
+    };
+    await bucket.putText(
+      layout.episodeManifest(slug, episodeId(e.guid)),
+      JSON.stringify(updated, null, 2),
+    );
+  }
+  console.log(`\nSet the thumbnail on ${linked.length - failed} of ${linked.length} videos.`);
+  if (failed) process.exitCode = 1;
 }
 
 /** Each episode's YouTube video or upload progress. */

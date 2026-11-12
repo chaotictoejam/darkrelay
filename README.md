@@ -209,6 +209,7 @@ In a bundle, put them in `episode.json` as `"youtube": { "title": "...", "descri
 ```bash
 npx darkrelay youtube sync my-show <guid>           # send the title and description now
 npx darkrelay youtube sync my-show <guid> --force   # also for a linked video
+npx darkrelay youtube thumbnail my-show logo-16x9.jpg --through 2026-09-18   # one thumbnail for many videos
 ```
 
 **Two YouTube rules to know:**
