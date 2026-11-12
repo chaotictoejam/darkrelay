@@ -186,6 +186,23 @@ export class DashboardStack extends Stack {
       integration: new integrations.HttpLambdaIntegration('ReadShows', reader),
       authorizer,
     });
+    // `/brands` is what the dashboard calls; `/shows` is the same tree under
+    // its older name, kept so an older dashboard build keeps working. A path
+    // that is not registered here returns API Gateway's own 404, which
+    // carries no CORS headers, so the browser reports it as a network error
+    // rather than a 404 — add the route here as well as in the router.
+    api.addRoutes({
+      path: '/brands/{proxy+}',
+      methods: [apigw.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration('ReadBrand', reader),
+      authorizer,
+    });
+    api.addRoutes({
+      path: '/brands',
+      methods: [apigw.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration('ReadBrands', reader),
+      authorizer,
+    });
     const upload = new integrations.HttpLambdaIntegration('Upload', uploads);
     for (const [path, method] of [
       ['/me', apigw.HttpMethod.GET],
