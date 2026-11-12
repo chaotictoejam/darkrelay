@@ -110,7 +110,7 @@ npm run deploy
 For stacks that add IAM roles or policies, CDK asks "Do you wish to deploy these changes (y/n)?" and waits. The transcoder image build prints a lot at the same time, so the question is easily lost and the deploy looks stuck; type `y` and press Enter. To avoid the prompts, review the changes first, then deploy without approval:
 
 ```bash
-npm exec -w @darkrelay/infra -- cdk diff
+npm run cdk -- diff
 npm run deploy -- --require-approval never
 ```
 
@@ -259,7 +259,7 @@ npx darkrelay bundle my-show <bundleId>   # check on it later
 
 How it runs: the publisher starts one Fargate Spot task per upload (4 vCPU, 8 GB, 60 GB scratch; configurable under `transcoder` in `darkrelay.config.json`). Tasks run in public subnets with a public IP, so there's no NAT gateway; S3 traffic uses a free gateway endpoint. The task writes the audio and HLS, then `processed.json`, which resumes publishing. If Spot reclaims the task, the publisher retries once on regular Fargate; a second failure rejects the bundle with the reason. Uploads over 5 GB are copied with multipart copy.
 
-`cdk deploy` builds the transcoder image (Debian's ffmpeg, about 1 GB), so the machine you deploy from needs Docker or Podman. For Podman, set `CDK_DOCKER=podman` (e.g. `CDK_DOCKER=podman npm run deploy`). Nothing else needs a container build: the Lambdas are bundled with the local esbuild.
+`cdk deploy` builds the transcoder image (Debian's ffmpeg, about 1 GB), so the machine you deploy from needs Docker or Podman. `npm run deploy` and `npm run cdk` pick whichever you have: CDK itself only ever shells out to `docker`, so they set `CDK_DOCKER` for it, preferring `docker` and falling back to `podman` (Fedora, RHEL and friends ship no docker binary). Set `CDK_DOCKER` yourself to override the choice. Running `cdk` directly instead of through those scripts needs the variable: `CDK_DOCKER=podman cdk deploy`. Nothing else needs a container build: the Lambdas are bundled with the local esbuild.
 
 Apps that support `alternateEnclosure` (Fountain, Podverse and a few others) offer the video. Apple Podcasts and Spotify ignore it and play the audio.
 
