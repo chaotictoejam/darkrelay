@@ -1,5 +1,6 @@
 import { AthenaClient } from '@aws-sdk/client-athena';
-import { EpisodeManifest, ShowConfig, layout, metricKeys, type MetricItem } from '@darkrelay/core';
+import { EpisodeManifest, layout, metricKeys, type MetricItem } from '@darkrelay/core';
+import { loadBrand } from '../lib/brands';
 import { S3Store } from '../lib/store';
 import { aggregateDay, defaultDates, type AggregateDeps } from './aggregate';
 import { runQuery } from './athena';
@@ -30,10 +31,7 @@ const deps: AggregateDeps = {
     const raw = await media.getText(layout.episodeManifest(show, episodeId));
     return raw ? EpisodeManifest.parse(JSON.parse(raw)) : undefined;
   },
-  async loadShowTitle(show) {
-    const raw = await media.getText(layout.showConfig(show));
-    return raw ? ShowConfig.parse(JSON.parse(raw)).title : undefined;
-  },
+  loadBrand: (brand) => loadBrand(media, brand, deps.log),
   put: (items) => putAll(table, items),
   episodeSeries: (show, episodeId) =>
     queryAll<MetricItem>({

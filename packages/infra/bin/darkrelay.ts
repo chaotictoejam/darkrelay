@@ -33,6 +33,7 @@ new DashboardStack(app, `${config.stackPrefix}Dashboard`, {
   config,
   table: analytics.table,
   mediaBucket: hosting.mediaBucket,
+  publicBaseUrl: hosting.publicBaseUrl,
 });
 if (config.alerts) {
   new AlertsStack(app, `${config.stackPrefix}Alerts`, {

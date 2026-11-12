@@ -35,6 +35,7 @@ function synth(input: DeploymentConfigInput) {
     config,
     table: analytics.table,
     mediaBucket: hosting.mediaBucket,
+    publicBaseUrl: hosting.publicBaseUrl,
   });
   return {
     hosting: Template.fromStack(hosting),

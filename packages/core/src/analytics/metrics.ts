@@ -3,6 +3,8 @@
  * (CloudFront logs, prefix redirects, YouTube, CSV imports) writes daily
  * items in this shape; the dashboard only ever reads them. Adding a source
  * means writing these items with a new `source` value, nothing else.
+ *
+ * A brand's outlets map onto `source`: see `outletSource` in `brand.ts`.
  */
 export const SOURCES = ['cloudfront', 'prefix', 'youtube', 'apple-csv', 'spotify-csv'] as const;
 export type MetricSource = (typeof SOURCES)[number];
@@ -27,9 +29,18 @@ export interface DailyCounts {
 export interface MetricItem extends DailyCounts {
   pk: string;
   sk: string;
+  /**
+   * The brand slug. The field is named `show` because it predates brands and
+   * is kept so no stored item is ever rewritten; a migrated show's brand has
+   * the same slug, so the value does not change either.
+   */
   show: string;
-  /** Absent on show-level totals. */
+  /** Absent on brand-level totals. */
   episodeId?: string;
+  /** The platform's id, on items for content that is not an episode. */
+  videoId?: string;
+  /** The outlet the numbers came from, where the writer knew it. */
+  outlet?: string;
   /** UTC day, YYYY-MM-DD. */
   date: string;
   source: MetricSource;
@@ -46,24 +57,53 @@ export interface EpisodeMetaItem {
   pubDate: string;
 }
 
-export interface ShowMetaItem {
+export interface BrandMetaItem {
   pk: string;
   sk: string;
   show: string;
   title: string;
 }
+/** @deprecated Shows are brands; use {@link BrandMetaItem}. */
+export type ShowMetaItem = BrandMetaItem;
 
+/**
+ * Keys are unchanged from before brands: `S#<slug>` now means the brand, and
+ * a migrated show's brand keeps its slug, so no stored item moves. The
+ * `show*` names are kept as aliases of the `brand*` ones for the same reason.
+ */
 export const metricKeys = {
-  episodeSeries: (show: string, episodeId: string) => `S#${show}#E#${episodeId}`,
-  showSeries: (show: string) => `S#${show}#ALL`,
+  episodeSeries: (brand: string, episodeId: string) => `S#${brand}#E#${episodeId}`,
+  /**
+   * Content that is not an episode (a video, a Short), keyed by the
+   * platform's own id. Same `DailyCounts` shape as an episode series.
+   */
+  videoSeries: (brand: string, videoId: string) => `S#${brand}#V#${videoId}`,
+  /**
+   * One outlet's own numbers, e.g. a channel's subscribers and traffic
+   * sources. Never summed into brand totals: a channel counts views of
+   * everything on it, including content DarkRelay knows nothing about.
+   */
+  outletSeries: (brand: string, outlet: string) => `S#${brand}#O#${outlet}`,
+  brandSeries: (brand: string) => `S#${brand}#ALL`,
   day: (date: string, source: MetricSource) => `D#${date}#${source}`,
-  showEpisodes: (show: string) => `S#${show}`,
+  /** Partition holding one item per episode and per video of a brand. */
+  brandEpisodes: (brand: string) => `S#${brand}`,
   episodeMeta: (episodeId: string) => `E#${episodeId}`,
-  showsPk: 'SHOWS',
-  showMeta: (show: string) => `S#${show}`,
+  videoMeta: (videoId: string) => `V#${videoId}`,
+  brandsPk: 'SHOWS',
+  brandMeta: (brand: string) => `S#${brand}`,
   runPk: (source: MetricSource) => `RUN#${source}`,
   /** Audience retention curve for an episode from one source (phase 5 charts it). */
   retention: (source: MetricSource) => `RET#${source}`,
+
+  /** @deprecated Use `brandSeries`. */
+  showSeries: (brand: string) => `S#${brand}#ALL`,
+  /** @deprecated Use `brandEpisodes`. */
+  showEpisodes: (brand: string) => `S#${brand}`,
+  /** @deprecated Use `brandsPk`. */
+  showsPk: 'SHOWS',
+  /** @deprecated Use `brandMeta`. */
+  showMeta: (brand: string) => `S#${brand}`,
 };
 
 export function emptyCounts(): DailyCounts {
@@ -111,4 +151,104 @@ export function windowTotals(
     if (age < 90) totals.downloads90 += item.downloads;
   }
   return totals;
+}
+
+/** The format axis YouTube reports on: a Short behaves nothing like a talk. */
+export const VIDEO_FORMATS = ['short', 'long', 'live', 'other'] as const;
+export type VideoFormat = (typeof VIDEO_FORMATS)[number];
+
+/**
+ * YouTube Analytics' `creatorContentType` dimension, which is the only
+ * authoritative answer to "is this a Short?" the API gives.
+ */
+export function videoFormat(creatorContentType: string): VideoFormat {
+  switch (creatorContentType.toUpperCase()) {
+    case 'SHORTS':
+      return 'short';
+    case 'VIDEO_ON_DEMAND':
+      return 'long';
+    case 'LIVE_STREAM':
+      return 'live';
+    default:
+      return 'other';
+  }
+}
+
+/**
+ * Channel-level numbers for one outlet on one day. Separate from
+ * `DailyCounts` because these are properties of the channel, not of a piece
+ * of content: they cannot be added up per episode, and they must never be
+ * added to brand totals.
+ */
+export interface ChannelCounts {
+  views: number;
+  watchSeconds: number;
+  subscribersGained: number;
+  subscribersLost: number;
+  /** Views by `insightTrafficSourceType`, e.g. SHORTS_FEED, YT_SEARCH. */
+  trafficSources: Record<string, number>;
+  /** Views and watch time per format, so Shorts and long-form stay apart. */
+  formats: Partial<Record<VideoFormat, { views: number; watchSeconds: number }>>;
+}
+
+export interface ChannelMetricItem extends ChannelCounts {
+  pk: string;
+  sk: string;
+  /** The brand slug. */
+  show: string;
+  /** The outlet id within the brand. */
+  outlet: string;
+  date: string;
+  source: MetricSource;
+  updatedAt: string;
+}
+
+export function emptyChannelCounts(): ChannelCounts {
+  return {
+    views: 0,
+    watchSeconds: 0,
+    subscribersGained: 0,
+    subscribersLost: 0,
+    trafficSources: {},
+    formats: {},
+  };
+}
+
+export function addChannelCounts(into: ChannelCounts, from: ChannelCounts): ChannelCounts {
+  into.views += from.views;
+  into.watchSeconds += from.watchSeconds;
+  into.subscribersGained += from.subscribersGained;
+  into.subscribersLost += from.subscribersLost;
+  for (const [name, n] of Object.entries(from.trafficSources)) {
+    into.trafficSources[name] = (into.trafficSources[name] ?? 0) + n;
+  }
+  for (const [name, f] of Object.entries(from.formats) as [
+    VideoFormat,
+    { views: number; watchSeconds: number },
+  ][]) {
+    const target = (into.formats[name] ??= { views: 0, watchSeconds: 0 });
+    target.views += f.views;
+    target.watchSeconds += f.watchSeconds;
+  }
+  return into;
+}
+
+/**
+ * One item per video of a brand, alongside the episode items: what the video
+ * is, and its totals. `episodeId` is set when the video is an episode's own
+ * video, so the dashboard does not list it twice.
+ */
+export interface VideoMetaItem {
+  pk: string;
+  sk: string;
+  show: string;
+  outlet: string;
+  videoId: string;
+  title: string;
+  publishedAt: string;
+  format: VideoFormat;
+  durationSeconds?: number;
+  episodeId?: string;
+  /** The episode a Short was clipped from, once Shorts carry one. */
+  parentId?: string;
 }

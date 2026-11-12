@@ -12,6 +12,14 @@ export const PUBLIC_PREFIX = 'public/';
 export const MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 export const layout = {
+  /**
+   * Brand identity and its outlets. Written next to the feed config, never
+   * instead of it: the publisher ignores this file, so a brand change can
+   * never affect a feed.
+   */
+  brandConfig: (brand: string) => `catalog/${brand}/brand.json`,
+  /** Public-relative key; prefix with PUBLIC_PREFIX for the bucket key. */
+  brandIcon: (brand: string, hash: string, ext: string) => `${brand}/icon-${hash}.${ext}`,
   showConfig: (show: string) => `catalog/${show}/show.json`,
   episodesPrefix: (show: string) => `catalog/${show}/episodes/`,
   episodeManifest: (show: string, episodeId: string) =>
@@ -27,6 +35,17 @@ export const layout = {
   rebuildRequest: (show: string) => `requests/${show}/rebuild`,
   youtubeUpload: (show: string, episodeId: string) => `catalog/${show}/youtube/${episodeId}.json`,
 };
+
+const CATALOG_KEY = /^catalog\/([a-z0-9][a-z0-9-]{0,62})\/([^/]+)$/;
+
+/**
+ * The slug in a catalog key for one file, e.g. `catalog/<slug>/brand.json`.
+ * Undefined for any other key, so listing `catalog/` and filtering is safe.
+ */
+export function catalogSlug(key: string, file: string): string | undefined {
+  const m = CATALOG_KEY.exec(key);
+  return m && m[2] === file ? m[1] : undefined;
+}
 
 /** Upload id for a bundle under inbox/: sortable by time, unique enough to never collide. */
 export function newBundleId(now = new Date()): string {

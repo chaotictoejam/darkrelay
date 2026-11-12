@@ -27,6 +27,8 @@ export interface DashboardStackProps extends StackProps {
   config: DeploymentConfig;
   table: dynamodb.ITable;
   mediaBucket: s3.IBucket;
+  /** Public media base URL, so the dashboard can show brand icons. */
+  publicBaseUrl: string;
 }
 
 const DIST = resolve(REPO_ROOT, 'packages/dashboard/dist');
@@ -200,6 +202,7 @@ export class DashboardStack extends Stack {
       apiUrl: api.apiEndpoint,
       authDomain: domain.baseUrl(),
       clientId: client.userPoolClientId,
+      mediaUrl: props.publicBaseUrl,
     };
     new s3deploy.BucketDeployment(this, 'Deploy', {
       destinationBucket: site,

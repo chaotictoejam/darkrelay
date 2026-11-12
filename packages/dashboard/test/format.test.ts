@@ -5,10 +5,13 @@ import {
   deviceName,
   duration,
   fillDays,
+  formatName,
   niceTicks,
+  outletKindName,
   podcastApps,
   sourceName,
   topEntries,
+  trafficSourceName,
 } from '../src/format';
 
 describe('format', () => {
@@ -75,5 +78,21 @@ describe('format', () => {
         { source: 'spotify-csv' },
       ]),
     ).toEqual({ Overcast: 4, 'Apple Podcasts': 2 });
+  });
+});
+
+describe('names for outlets, formats and traffic sources', () => {
+  it('words traffic sources as YouTube Studio does, and falls back readably', () => {
+    expect(trafficSourceName('SHORTS')).toBe('Shorts feed');
+    expect(trafficSourceName('YT_SEARCH')).toBe('YouTube search');
+    expect(trafficSourceName('SOME_NEW_SOURCE')).toBe('some new source');
+  });
+
+  it('names formats and outlet kinds', () => {
+    expect(formatName('short')).toBe('Shorts');
+    expect(formatName('long')).toBe('Long-form');
+    expect(formatName('unknown-kind')).toBe('unknown-kind');
+    expect(outletKindName('youtube')).toBe('YouTube channel');
+    expect(outletKindName('rss')).toBe('RSS feed');
   });
 });

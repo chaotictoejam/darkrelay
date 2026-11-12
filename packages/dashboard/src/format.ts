@@ -125,3 +125,55 @@ export function podcastApps(
 export function sourceName(source: string): string {
   return SOURCES[source] ?? source;
 }
+
+/** `insightTrafficSourceType` codes, as YouTube Studio words them. */
+const TRAFFIC: Record<string, string> = {
+  SHORTS: 'Shorts feed',
+  SHORTS_FEED: 'Shorts feed',
+  SUBSCRIBER: 'Subscriptions and home',
+  YT_SEARCH: 'YouTube search',
+  RELATED_VIDEO: 'Suggested videos',
+  EXT_URL: 'External sites',
+  PLAYLIST: 'Playlists',
+  YT_PLAYLIST_PAGE: 'Playlist pages',
+  YT_CHANNEL: 'Channel pages',
+  NOTIFICATION: 'Notifications',
+  END_SCREEN: 'End screens',
+  ANNOTATION: 'Cards and annotations',
+  NO_LINK_EMBEDDED: 'Embedded players',
+  NO_LINK_OTHER: 'Direct or unknown',
+  ADVERTISING: 'Advertising',
+  CAMPAIGN_CARD: 'Campaign cards',
+  PROMOTED: 'Promoted',
+  HASHTAGS: 'Hashtag pages',
+  SOUND_PAGE: 'Sound pages',
+  YT_OTHER_PAGE: 'Other YouTube pages',
+  UNKNOWN: 'Unknown',
+};
+
+export function trafficSourceName(code: string): string {
+  return TRAFFIC[code] ?? code.toLowerCase().replace(/_/g, ' ');
+}
+
+const FORMATS: Record<string, string> = {
+  short: 'Shorts',
+  long: 'Long-form',
+  live: 'Live streams',
+  other: 'Other',
+};
+
+export function formatName(format: string): string {
+  return FORMATS[format] ?? format;
+}
+
+/** Outlet kinds, for a page heading. */
+const OUTLET_KINDS: Record<string, string> = {
+  rss: 'RSS feed',
+  youtube: 'YouTube channel',
+  spotify: 'Spotify',
+  apple: 'Apple Podcasts',
+};
+
+export function outletKindName(kind: string): string {
+  return OUTLET_KINDS[kind] ?? kind;
+}

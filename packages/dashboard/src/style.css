@@ -544,3 +544,106 @@ fieldset.field {
 .confirm {
   color: var(--danger);
 }
+
+/* Brand switcher: icons in the header, so which brand you are in is obvious. */
+.switcher {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem 0.25rem 0.3rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+.brand-pill[aria-current] {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: var(--text-secondary);
+}
+.icon {
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+  background: var(--track);
+}
+.icon-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.brand-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.brand-head h1 {
+  margin: 0;
+}
+.brands {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.brands a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--text-primary);
+}
+.brands p {
+  margin: 0.15rem 0 0 2.6rem;
+  font-size: 0.8125rem;
+}
+
+/* Shorts against long-form, and other two-sided splits. */
+.splits {
+  display: grid;
+  gap: 0.5rem;
+}
+.split {
+  display: grid;
+  grid-template-columns: 7rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.875rem;
+}
+.split-label {
+  color: var(--text-secondary);
+}
+.split-num {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.meter {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+.meter-fill {
+  height: 100%;
+  background: var(--series-1);
+}
+@media (max-width: 560px) {
+  .split {
+    grid-template-columns: 5.5rem 1fr;
+  }
+  .split-num {
+    grid-column: 1 / -1;
+  }
+}

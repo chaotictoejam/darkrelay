@@ -30,8 +30,37 @@ export interface EpisodeSummary {
   suspectTotal?: number;
 }
 
+/** An outlet as the ingestion runs record it on the brand's row. */
+export interface Outlet {
+  id: string;
+  kind: string;
+  name: string;
+  source: string;
+}
+
+export interface OutletTotals extends Outlet {
+  plays: number;
+  watchSeconds: number;
+  apps: Record<string, number>;
+}
+
+export interface VideoSummary {
+  videoId: string;
+  outlet?: string;
+  title: string;
+  publishedAt: string;
+  format: string;
+  durationSeconds?: number;
+  downloads7?: number;
+  downloads30?: number;
+  downloads90?: number;
+  downloadsTotal?: number;
+  watchSecondsTotal?: number;
+}
+
 export interface SeriesResponse {
   show: string;
+  brand?: string;
   from: string;
   to: string;
   daily: Day[];
@@ -43,19 +72,66 @@ export interface SeriesResponse {
     watchSeconds: number;
     apps: Record<string, number>;
   }[];
+  byOutlet: OutletTotals[];
 }
 
 export interface ShowResponse extends SeriesResponse {
+  title?: string;
+  iconKey?: string;
+  iconUrl?: string;
+  outlets?: Outlet[];
   episodes: EpisodeSummary[];
+  videos?: VideoSummary[];
 }
 
 export interface EpisodeResponse extends SeriesResponse {
   episode: EpisodeSummary;
 }
 
+export interface VideoResponse extends SeriesResponse {
+  video: VideoSummary;
+}
+
+export interface BrandSummary {
+  show: string;
+  brand?: string;
+  title: string;
+  iconKey?: string;
+  iconUrl?: string;
+  outlets?: Outlet[];
+}
+
 export interface ShowsResponse {
-  shows: { show: string; title: string }[];
+  shows: BrandSummary[];
+  brands?: BrandSummary[];
   lastRun: { date: string; updatedAt: string } | null;
+}
+
+export interface ChannelDay {
+  date: string;
+  views: number;
+  watchSeconds: number;
+  subscribersGained: number;
+  subscribersLost: number;
+  trafficSources: Record<string, number>;
+  formats: Record<string, { views: number; watchSeconds: number }>;
+}
+
+/** A channel's own numbers: properties of the outlet, not of one video. */
+export interface OutletResponse {
+  show: string;
+  brand: string;
+  title: string;
+  outlet: Outlet;
+  from: string;
+  to: string;
+  channel: {
+    daily: ChannelDay[];
+    totals: Omit<ChannelDay, 'date'>;
+    subscriberChange: number;
+  };
+  content: SeriesResponse;
+  videos: VideoSummary[];
 }
 
 /** What the signed-in user may do. `view` is null for admins (every show). */

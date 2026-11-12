@@ -1,5 +1,15 @@
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
+import { manyBrands, oneBrand } from './brands';
+import {
+  addOutlet,
+  getBrand,
+  listBrands,
+  migrateBrands,
+  putBrand,
+  removeOutlet,
+  setBrandIcon,
+} from './commands/brand';
 import {
   coverToThumbnail,
   listEpisodes,
@@ -21,6 +31,7 @@ import { bundleStatus, publish } from './commands/publish';
 import { getShow, putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
 import { validate } from './commands/validate';
 import * as youtube from './commands/youtube';
+import { OUTLET_KINDS } from '@darkrelay/core';
 
 const program = new Command('darkrelay')
   .description('Publish podcasts to your own DarkRelay deployment')
@@ -46,10 +57,65 @@ show
   .description('Stop updating the public feed (the last one stays up)')
   .action((slug) => setShowStatus(slug, 'draft', g()));
 
+const brand = program
+  .command('brand')
+  .description('Manage brands and the outlets they publish to')
+  .addHelpText(
+    'after',
+    `
+A brand is what DarkRelay publishes and measures; its outlets are the places
+content goes out (an RSS feed DarkRelay hosts, a YouTube channel, Spotify,
+Apple). Content belongs to the brand, not to an outlet. A show is a brand
+with one rss outlet, and keeps its slug, feed URL and GUIDs.`,
+  );
+brand
+  .command('list')
+  .description('Brands in this deployment and their outlets')
+  .action(() => listBrands(g()));
+brand
+  .command('get <slug>')
+  .description("Print a brand's JSON (edit it, then brand put it back)")
+  .action((slug) => getBrand(slug, g()));
+brand
+  .command('put <file>')
+  .description('Create or update a brand from a JSON file')
+  .option('--icon <path>', 'square brand icon (JPEG or PNG, 128-3000 px, under 2 MB)')
+  .action((file, o) => putBrand(file, o, g()));
+brand
+  .command('icon <slug> <image>')
+  .description("Set a brand's icon (square JPEG or PNG, shown in the dashboard)")
+  .action((slug, image) => setBrandIcon(slug, image, g()));
+brand
+  .command('migrate [slug]')
+  .description('Write brand.json for existing shows (all of them without a slug)')
+  .option('--dry-run', 'list what would be written')
+  .option(
+    '--force',
+    "rewrite an existing brand from its show, losing the brand's own name and icon",
+  )
+  .action((slug, o) => migrateBrands(slug, o, g()));
+
+const outlet = brand.command('outlet').description("A brand's outlets");
+outlet
+  .command('add <slug>')
+  .description('Add an outlet to a brand, or replace the one with the same --id')
+  .addOption(new Option('--kind <kind>', 'outlet kind').choices(OUTLET_KINDS).makeOptionMandatory())
+  .option('--id <id>', 'outlet id, unique within the brand (default: the kind)')
+  .option('--label <label>', 'name shown for it in the dashboard')
+  .option('--connection <name>', 'youtube: a channel from `darkrelay youtube connect`')
+  .option('--feed <slug>', 'rss: the feed config to publish through (default: the brand slug)')
+  .option('--url <url>', 'spotify, apple: the brand page on that platform')
+  .action((slug, o) => addOutlet(slug, o, g()));
+outlet
+  .command('remove <slug> <id>')
+  .description('Stop counting an outlet (nothing is deleted or unpublished)')
+  .action((slug, id) => removeOutlet(slug, id, g()));
+
 program
   .command('publish <path>')
   .description('Publish an audio or video file, or a bundle directory with episode.json')
-  .requiredOption('--show <slug>')
+  .option('--brand <slug>', 'the brand to publish to')
+  .addOption(new Option('--show <slug>', 'old name of --brand'))
   .option('--title <title>')
   .option('--description <html>', 'show notes (HTML)')
   .option('--notes <file>', 'read show notes (HTML) from a file')
@@ -76,7 +142,7 @@ program
     'YouTube description (plain text) from a file, instead of the show notes',
   )
   .option('--no-wait', "don't wait for the publish result")
-  .action((path, o) => publish(path, o, g()));
+  .action((path, o) => publish(path, { ...o, show: oneBrand(o) }, g()));
 
 program
   .command('bundle <slug> <bundleId>')
@@ -86,14 +152,15 @@ program
 program
   .command('import <feedUrl>')
   .description('Import an existing feed as a draft show (media stays on the old host)')
-  .requiredOption('--show <slug>', 'slug for the imported show')
+  .option('--brand <slug>', 'slug for the imported brand')
+  .addOption(new Option('--show <slug>', 'old name of --brand'))
   .option('--file <path>', 'read the feed from a saved file instead of fetching it')
   .option('--owner-name <name>')
   .option('--owner-email <email>')
   .option('--dry-run', 'write the result locally instead of uploading')
   .option('--out <dir>', 'output directory for --dry-run')
   .option('--force', 'overwrite an existing show')
-  .action((url, o) => importCommand(url, o, g()));
+  .action((url, o) => importCommand(url, { ...o, show: oneBrand(o) }, g()));
 
 program
   .command('migrate-media <slug>')
@@ -163,7 +230,13 @@ yt.command('client')
   .action((o) => youtube.setClient(o, g()));
 yt.command('connect <name>')
   .description('Sign in to a YouTube channel and store its token (once per channel)')
-  .action((name) => youtube.connect(name, g()));
+  .option('--brand <slug>', "add it as that brand's YouTube outlet, creating the brand if new")
+  .action((name, o) => youtube.connect(name, o, g()));
+yt.command('backfill <brand>')
+  .description("Read a brand's channel history: every upload, and the channel's own numbers")
+  .option('--from <date>', 'first day, YYYY-MM-DD (default: a year ago)')
+  .option('--to <date>', 'last day (default: yesterday)')
+  .action((brand, o) => youtube.backfill(brand, o, g()));
 yt.command('status <slug>')
   .description("Each episode's YouTube video or upload progress")
   .action((slug) => youtube.status(slug, g()));
@@ -225,14 +298,16 @@ dashboard
   .command('add-user <email>')
   .description('Invite someone to the dashboard (Cognito emails a temporary password)')
   .addOption(roleOption())
-  .option('--show <slug...>', 'shows the role applies to (viewer, uploader)')
-  .action((email, o) => addDashboardUser(email, o, g()));
+  .option('--brand <slug...>', 'brands the role applies to (viewer, uploader)')
+  .addOption(new Option('--show <slug...>', 'old name of --brand'))
+  .action((email, o) => addDashboardUser(email, { ...o, show: manyBrands(o) }, g()));
 dashboard
   .command('set-role <email>')
   .description("Change someone's access, e.g. --role uploader --show my-show")
   .addOption(roleOption())
-  .option('--show <slug...>', 'shows the role applies to')
-  .action((email, o) => setDashboardRole(email, o, g()));
+  .option('--brand <slug...>', 'brands the role applies to')
+  .addOption(new Option('--show <slug...>', 'old name of --brand'))
+  .action((email, o) => setDashboardRole(email, { ...o, show: manyBrands(o) }, g()));
 dashboard
   .command('users')
   .description('List dashboard users and their roles')

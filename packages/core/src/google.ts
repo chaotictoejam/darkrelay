@@ -270,6 +270,50 @@ export class YouTube {
     return out;
   }
 
+  /**
+   * Duration and privacy of up to 50 videos per call (1 quota unit each).
+   * Videos the channel cannot see are simply absent from the result.
+   */
+  async videoDetails(
+    ids: string[],
+  ): Promise<
+    { id: string; duration: string; privacyStatus?: string; title?: string; publishedAt?: string }[]
+  > {
+    const out: {
+      id: string;
+      duration: string;
+      privacyStatus?: string;
+      title?: string;
+      publishedAt?: string;
+    }[] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const url = new URL(`${this.endpoints.api}/youtube/v3/videos`);
+      url.search = new URLSearchParams({
+        part: 'contentDetails,status,snippet',
+        id: ids.slice(i, i + 50).join(','),
+        maxResults: '50',
+      }).toString();
+      const r = await this.json<{
+        items?: {
+          id: string;
+          contentDetails?: { duration?: string };
+          status?: { privacyStatus?: string };
+          snippet?: { title?: string; publishedAt?: string };
+        }[];
+      }>(url.toString(), {}, 'Reading video details');
+      for (const v of r.items ?? []) {
+        out.push({
+          id: v.id,
+          duration: v.contentDetails?.duration ?? '',
+          privacyStatus: v.status?.privacyStatus,
+          title: v.snippet?.title,
+          publishedAt: v.snippet?.publishedAt,
+        });
+      }
+    }
+    return out;
+  }
+
   /** YouTube Analytics report rows as objects keyed by column name. */
   async report(params: Record<string, string>): Promise<Record<string, string | number>[]> {
     const url = new URL(`${this.endpoints.analytics}/v2/reports`);

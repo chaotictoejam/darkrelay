@@ -22,7 +22,8 @@ import {
   type ClientCredentials,
   type ShowConfig,
 } from '@darkrelay/core';
-import { Bucket, resolveDeployment, type GlobalOptions } from '../context';
+import { Bucket, resolveDeployment, stackOutputs, type GlobalOptions } from '../context';
+import { attachYouTubeOutlet, loadBrand } from './brand';
 import { loadEpisodes, loadShow } from './show';
 
 const region = 'us-east-1';
@@ -99,7 +100,7 @@ export function pkce() {
  * in SSM. Google asks which channel when the account has several (brand
  * accounts), so connect once per channel with a name per channel.
  */
-export async function connect(name: string, g: GlobalOptions) {
+export async function connect(name: string, flags: { brand?: string }, g: GlobalOptions) {
   if (!/^[a-z0-9-]{1,40}$/.test(name))
     throw new Error('Connection names are lowercase letters, digits and dashes');
   const creds = await getSecret<ClientCredentials>(clientPath(g));
@@ -174,9 +175,23 @@ export async function connect(name: string, g: GlobalOptions) {
     channelTitle: channel.title,
   });
   console.log(`Connected "${name}" to ${channel.title} (${channel.id}).`);
-  console.log(
-    'Add to the show file: "youtube": { "connection": "' + name + '" }, then: darkrelay show put',
-  );
+  if (flags.brand) {
+    await attachYouTubeOutlet(g, flags.brand, {
+      connection: name,
+      channelId: channel.id,
+      channelTitle: channel.title,
+    });
+    console.log(`Next: darkrelay youtube backfill ${flags.brand} --from <YYYY-MM-DD>`);
+  } else {
+    console.log(
+      `Add it to a brand: darkrelay brand outlet add <brand> --kind youtube --connection ${name}`,
+    );
+    console.log(
+      'For a podcast whose episodes upload automatically, also add to the show file: "youtube": { "connection": "' +
+        name +
+        '" }, then: darkrelay show put',
+    );
+  }
   console.log(
     'If your Google OAuth app is still in "Testing", this token expires in 7 days. Set it to "In production" in Google Cloud Console.',
   );
@@ -483,4 +498,56 @@ export async function status(slug: string, g: GlobalOptions) {
     console.log(`${e.pubDate.slice(0, 10)}  ${e.title}\n            ${line}`);
     for (const w of s?.warnings ?? []) console.log(`            warning: ${w}`);
   }
+}
+
+/**
+ * Reads a channel's whole history into the dashboard: every upload becomes a
+ * video (or is recognised as an episode's own video), and the channel's own
+ * numbers are stored per day. Safe to repeat: re-reading a day overwrites it.
+ */
+export async function backfill(
+  slug: string,
+  flags: { from?: string; to?: string },
+  g: GlobalOptions,
+) {
+  const date = (d: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d)))
+      throw new Error(`Bad date ${d}`);
+    return d;
+  };
+  const to = date(flags.to ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 10));
+  const from = date(
+    flags.from ?? new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10),
+  );
+  if (from > to) throw new Error('--from is after --to');
+
+  const bucket = new Bucket((await resolveDeployment(g)).bucket);
+  const brand = await loadBrand(bucket, slug);
+  if (!brand) throw new Error(`No brand or show "${slug}" in this deployment`);
+  const channels = brand.outlets.filter((o) => o.kind === 'youtube');
+  if (!channels.length) {
+    throw new Error(
+      `${slug} has no YouTube outlet. Add one: darkrelay brand outlet add ${slug} --kind youtube --connection <name>`,
+    );
+  }
+
+  const out = await stackOutputs(g, 'Analytics');
+  console.log(
+    `Backfilling ${channels.map((c) => c.id).join(', ')} for ${slug}, ${from} to ${to} ...`,
+  );
+  const r = await new LambdaClient({ region }).send(
+    new InvokeCommand({
+      FunctionName: out['YouTubeAnalyticsFunctionName'],
+      Payload: new TextEncoder().encode(
+        JSON.stringify({ brand: slug, from, to, listUploads: true }),
+      ),
+    }),
+  );
+  const body = new TextDecoder().decode(r.Payload ?? new Uint8Array());
+  if (r.FunctionError) throw new Error(`Backfill failed: ${body}`);
+  const run = JSON.parse(body) as { shows?: Record<string, unknown> };
+  console.log(`  ${JSON.stringify(run.shows ?? {})}`);
+  console.log(
+    'YouTube finalises the last few days later; re-run or wait for tonight for the final numbers.',
+  );
 }

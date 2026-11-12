@@ -4,7 +4,7 @@ Self-hosted, serverless podcast hosting and analytics on AWS. It is the publishi
 
 One upload in. An RSS feed (iTunes and Podcasting 2.0 tags) out, served from your own AWS account, with your own download logs.
 
-**Status:** phases 1 and 2 (hosting, feeds, import and migration, download analytics, dashboard). Video (phase 3) is built too. YouTube and prefix mode come next; see [Roadmap](#roadmap).
+**Status:** hosting, feeds, import and migration, download analytics, the dashboard, video and YouTube are all built. DarkRelay is now organised around [brands and outlets](#brands-and-outlets): not every brand is a podcast. See [Roadmap](#roadmap).
 
 ## How it works
 
@@ -18,8 +18,84 @@ darkrelay publish ──► S3 inbox/ ──(EventBridge)──► Publisher Lam
 
 - **Downloads never touch Lambda, a database or the dashboard.** CloudFront serves media and feeds straight from S3. If anything else breaks, episodes still download.
 - **Feeds are static files**, rebuilt on every publish. A feed that fails validation is never written: the last good one stays up and the errors are saved for `darkrelay status`.
-- **Several shows per deployment**, each at `https://<your-domain>/<show>/feed.xml`.
+- **Several brands per deployment.** A brand with a feed serves it at `https://<your-domain>/<brand>/feed.xml`; a brand with only a YouTube channel has no feed at all.
 - **Scheduled releases**: publish ahead of time with a future `--pub-date`; see below.
+
+## Brands and outlets
+
+DarkRelay publishes and measures **brands**. A brand is the thing with an audience; its **outlets** are the places its content goes out.
+
+```
+Brand (slug, name, icon)
+├── Outlets: rss | youtube | spotify | apple   (more than one of a kind is allowed)
+└── Content: episodes today
+```
+
+Content belongs to the brand, not to an outlet. So one brand can be a podcast that also posts to YouTube, and another can be a YouTube channel with no feed anywhere.
+
+| Outlet kind | What it is |
+| --- | --- |
+| `rss` | A feed DarkRelay hosts, at `/<show>/feed.xml`. Its feed config (title, categories, `podcast:guid`) stays in `show.json`, where the publisher reads it. |
+| `youtube` | A channel connected with `darkrelay youtube connect`. The outlet wraps the connection; the OAuth token stays in SSM, untouched. |
+| `spotify`, `apple` | Measured, not published to: they take numbers from the platform's own exports. |
+
+A brand is stored at `catalog/<slug>/brand.json`. **The publisher never reads it**, so a brand change can never affect a feed.
+
+### Shows are brands
+
+Every show you already have is a brand with the same slug: same feed URL, same `podcast:guid`, same episode `<guid>`s, same analytics keys. `show put` writes `brand.json` for a new show; write it for the shows you already have with:
+
+```bash
+npx darkrelay brand migrate --dry-run   # list what it would write
+npx darkrelay brand migrate
+```
+
+The migration only adds a file. It copies nothing, moves nothing and rewrites no analytics: the brand takes its name from the feed title, its icon from the show artwork, and its outlets from the feed and the show's YouTube connection. Reads do not wait for it either — a show with no `brand.json` is read as the brand it will become.
+
+`--show` is now the old name of `--brand` and both work everywhere (`publish`, `import`, `dashboard add-user`, `dashboard set-role`). Commands that take a slug as an argument are unchanged.
+
+### Managing brands
+
+```bash
+npx darkrelay brand list
+npx darkrelay brand get my-brand > my-brand.json   # edit it, then put it back
+npx darkrelay brand put my-brand.json --icon icon.png
+npx darkrelay brand icon my-brand icon.png         # square JPEG or PNG, 128-3000 px, under 2 MB
+npx darkrelay brand outlet add my-brand --kind youtube --connection my-channel
+npx darkrelay brand outlet add my-brand --kind spotify --url https://open.spotify.com/show/xxxx
+npx darkrelay brand outlet remove my-brand spotify
+```
+
+Copy `examples/brand.example.json` for a starting point. Outlet ids default to the kind, so a brand's first feed is `rss` and its first channel `youtube`; pass `--id` to add a second of the same kind. The icon is a square image in the media bucket, shown in the dashboard nav and on brand pages.
+
+Removing an outlet stops counting it and nothing else: the feed keeps serving and the channel keeps its videos. To stop publishing a feed, use `darkrelay show draft <slug>`.
+
+### YouTube channels as outlets
+
+A channel is an outlet like any other, and a brand can be nothing but a channel. Connect it once, and the connection names the brand it belongs to:
+
+```bash
+npx darkrelay youtube connect drjoanneskiles --brand drjoanneskiles   # creates the brand if it is new
+npx darkrelay youtube backfill drjoanneskiles --from 2024-01-01       # read the channel's history
+```
+
+`connect --brand` stores the OAuth token in SSM exactly as before, then adds (or updates) that brand's `youtube` outlet with the channel's id and title. A brand that does not exist yet is created, named after the channel; it has no feed, and nothing about it expects one. For a podcast whose episodes should keep uploading automatically, also keep `"youtube": { "connection": "..." }` in the show file: that is what the uploader reads.
+
+`backfill` lists the channel's uploads, so every video is recorded even if nobody watched it in the range, and then reads the daily detail of whatever had views. It is safe to repeat: re-reading a day overwrites it.
+
+What a channel outlet measures:
+
+|  | Where it goes |
+| --- | --- |
+| An episode's own video | That episode, as before. Views count as plays beside its downloads. |
+| Any other video or Short | A video of the brand, keyed by YouTube's id (`S#<brand>#V#<videoId>`). No title matching: it is the channel's, so it is the brand's. |
+| The channel itself | The outlet (`S#<brand>#O#<outlet>`): views, watch time, subscribers gained and lost, where views came from, and the Shorts/long-form split. |
+
+Channel numbers are **never** added into brand totals. A channel counts views of everything on it, including videos DarkRelay knows nothing about, so the outlet page shows both: what the channel did, and what DarkRelay can account for.
+
+Shorts are identified by YouTube's own `creatorContentType`, not by duration — a three-minute talk is not a Short. Where YouTube reports nothing for a video (no views in the range), duration is the fallback.
+
+A channel that is not connected yet, or whose token has been revoked, is logged and skipped: the other outlets and the other brands still run.
 
 ## Deploy
 
@@ -226,7 +302,9 @@ npx darkrelay youtube link my-show <guid> https://youtu.be/<id>   # one at a tim
 npx darkrelay analytics run --source youtube --from 2026-04-01
 ```
 
-**Analytics.** Nightly at 04:40 UTC, views and watch time per episode per day (re-reading the last week, as YouTube finalises numbers a few days late) and each recent video's retention curve. Views count as plays alongside podcast downloads, and the dashboard's _By source_ table keeps them apart.
+**Analytics.** Nightly at 04:40 UTC, for every brand's channels: views and watch time per day for each episode and each video, the channel's own numbers (subscribers, traffic sources, Shorts against long-form), and recent retention curves. The last week is re-read each night, as YouTube finalises numbers a few days late. Views count as plays alongside podcast downloads, and the dashboard's _By outlet_ table keeps them apart.
+
+A nightly run asks YouTube which videos had views in the window (one report), then asks for the daily detail of only those, so its cost follows activity rather than catalogue size. See [YouTube channels as outlets](#youtube-channels-as-outlets) for the full history pull.
 
 ## Analytics
 
@@ -251,6 +329,10 @@ npx darkrelay analytics check                     # after the first deploy: are 
 npx darkrelay analytics run                       # count yesterday now
 npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 90 days)
 ```
+
+### What the dashboard shows
+
+A **brand switcher** with icons sits in the header whenever you can see more than one brand. A brand page sums every outlet and lists its episodes and its videos. A YouTube outlet has a page of its own: channel views per day, subscribers gained and lost, Shorts against long-form, and where the views came from.
 
 ### Dashboard access
 
@@ -288,6 +370,19 @@ The browser sends the files straight to S3 as multipart uploads, so multi-GB vid
 To run the download or YouTube pulls yourself (catch up, backfill, or check the logs are readable), see [docs/running-analytics.md](docs/running-analytics.md).
 
 **Adding a data source** (YouTube, CSV imports, prefix redirects) means writing daily items in the shape defined in `packages/core/src/analytics/metrics.ts` with a new `source`. The dashboard sums all sources and needs no changes.
+
+**Brands and outlets.** A brand's outlets map onto `source` (`outletSource` in `packages/core/src/brand.ts`): an `rss` outlet's downloads are counted as `cloudfront`, a `youtube` outlet's views as `youtube`. Metric keys are per brand (`S#<brand>`) and are the same strings they were when brands were called shows, so a migrated brand keeps every number it had.
+
+| Key | What |
+| --- | --- |
+| `S#<brand>#ALL` | Brand totals per day and source. The sum of its content, never its channels' own numbers. |
+| `S#<brand>#E#<episodeId>` | One episode per day and source. |
+| `S#<brand>#V#<videoId>` | One video or Short per day and source. |
+| `S#<brand>#O#<outlet>` | One outlet's own numbers per day: subscribers, traffic sources, format split. |
+| `S#<brand>` | One row per episode (`E#`) and per video (`V#`): what it is, and its 7/30/90-day totals. |
+| `SHOWS` | One row per brand: name, icon and outlets, for the switcher. |
+
+Items written since outlets exist name the outlet they came from; older ones are matched by their `source`, which is exact as long as a brand has one outlet per kind.
 
 ## Cost
 
@@ -343,7 +438,7 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 | Prefix | Public | What |
 | --- | --- | --- |
 | `public/` | yes | Feeds and media. CloudFront's origin path, so `public/` is dropped from URLs. |
-| `catalog/` | no | `show.json`, episode manifests, draft preview feeds, feed errors. The source of truth. |
+| `catalog/` | no | `brand.json`, `show.json`, episode manifests, draft preview feeds, feed errors. The source of truth. |
 | `inbox/` | no | Uploaded bundles waiting to publish. Expire after 7 days. |
 | `inbox-status/` | no | Publish results the CLI reads. |
 | `requests/` | no | Rebuild requests. |
@@ -354,9 +449,14 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 2. **Download analytics and dashboard** (done)
 3. **Video: ffmpeg on Fargate Spot to HLS, plus audio extraction** (done)
 4. **YouTube upload and analytics** (done)
-5. HLS retention curves
-6. Prefix mode: analytics for shows that stay on another host
-7. Apple and Spotify CSV imports
+5. **Brands and outlets** (done): shows became brands, outlets are the places content goes out
+6. **YouTube channels as outlets** (done): channel metrics, uploads backfill, outlet pages
+7. Videos and Shorts as content kinds, with batch manifests and just-in-time uploads
+8. Slot scoring and a Shorts planner you approve before anything uploads
+9. Dashboard: brand switcher, per-outlet pages, slot heatmap, cross-brand calendar
+10. HLS retention curves
+11. Prefix mode: analytics for shows that stay on another host
+12. Apple and Spotify CSV imports
 
 Further out:
 

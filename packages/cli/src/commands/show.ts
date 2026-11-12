@@ -4,6 +4,7 @@ import { extname } from 'node:path';
 import {
   EpisodeManifest,
   ShowConfig,
+  brandFromShow,
   contentTypeFor,
   feedUrl,
   layout,
@@ -73,6 +74,12 @@ export async function putShow(file: string, flags: { image?: string }, global: G
       podcastGuidFromFeedUrl(feedUrl(baseUrl, input.slug)),
   });
   if (!parsed.success) throw new Error(`Invalid show:\n${z.prettifyError(parsed.error)}`);
+  // Every show is a brand. An existing brand.json is left alone: it may carry
+  // a name, icon and outlets the show config knows nothing about.
+  if (!(await bucket.exists(layout.brandConfig(parsed.data.slug)))) {
+    const brand = brandFromShow(parsed.data);
+    await bucket.putText(layout.brandConfig(brand.slug), JSON.stringify(brand, null, 2));
+  }
   await bucket.putText(layout.showConfig(parsed.data.slug), JSON.stringify(parsed.data, null, 2));
   console.log(
     `${existing ? 'Updated' : 'Created'} show ${parsed.data.slug} (${parsed.data.status}).`,
