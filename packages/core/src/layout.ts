@@ -12,6 +12,14 @@ export const PUBLIC_PREFIX = 'public/';
 export const MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 export const layout = {
+  /**
+   * Brand identity and its outlets. Written next to the feed config, never
+   * instead of it: the publisher ignores this file, so a brand change can
+   * never affect a feed.
+   */
+  brandConfig: (brand: string) => `catalog/${brand}/brand.json`,
+  /** Public-relative key; prefix with PUBLIC_PREFIX for the bucket key. */
+  brandIcon: (brand: string, hash: string, ext: string) => `${brand}/icon-${hash}.${ext}`,
   showConfig: (show: string) => `catalog/${show}/show.json`,
   episodesPrefix: (show: string) => `catalog/${show}/episodes/`,
   episodeManifest: (show: string, episodeId: string) =>
@@ -26,7 +34,42 @@ export const layout = {
   inboxStatus: (show: string, bundleId: string) => `inbox-status/${show}/${bundleId}.json`,
   rebuildRequest: (show: string) => `requests/${show}/rebuild`,
   youtubeUpload: (show: string, episodeId: string) => `catalog/${show}/youtube/${episodeId}.json`,
+  /**
+   * Content that is not an episode. The media sits beside its record and
+   * stays private: a video or a Short has no feed, so nothing needs a public
+   * URL before the platform publishes it.
+   */
+  contentPrefix: (brand: string) => `catalog/${brand}/content/`,
+  contentItem: (brand: string, id: string) => `catalog/${brand}/content/${id}.json`,
+  contentMedia: (brand: string, id: string, file: string) =>
+    `catalog/${brand}/content/${id}/${file}`,
+  contentUpload: (brand: string, id: string) => `catalog/${brand}/content/${id}.upload.json`,
+  /**
+   * Proposed schedules, kept so a plan can be read, approved later, and
+   * looked at again afterwards to see what it actually did.
+   */
+  plansPrefix: (brand: string) => `catalog/${brand}/plans/`,
+  contentPlan: (brand: string, planId: string) => `catalog/${brand}/plans/${planId}.json`,
 };
+
+const CATALOG_KEY = /^catalog\/([a-z0-9][a-z0-9-]{0,62})\/([^/]+)$/;
+
+/** Brand and content id from a content record's key, for S3 event routing. */
+export function contentKeyParts(key: string): { brand: string; id: string } | undefined {
+  const m = /^catalog\/([a-z0-9][a-z0-9-]{0,62})\/content\/([a-z0-9][a-z0-9-]{0,63})\.json$/.exec(
+    key,
+  );
+  return m ? { brand: m[1]!, id: m[2]! } : undefined;
+}
+
+/**
+ * The slug in a catalog key for one file, e.g. `catalog/<slug>/brand.json`.
+ * Undefined for any other key, so listing `catalog/` and filtering is safe.
+ */
+export function catalogSlug(key: string, file: string): string | undefined {
+  const m = CATALOG_KEY.exec(key);
+  return m && m[2] === file ? m[1] : undefined;
+}
 
 /** Upload id for a bundle under inbox/: sortable by time, unique enough to never collide. */
 export function newBundleId(now = new Date()): string {

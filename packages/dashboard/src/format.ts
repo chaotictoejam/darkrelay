@@ -17,6 +17,41 @@ export function shortDate(iso: string): string {
   });
 }
 
+/**
+ * "Nov 20, 6:00 PM" — a publish slot, in the reader's own time zone. A slot
+ * is a moment, not a day, so unlike `shortDate` it keeps the clock and is
+ * never forced into UTC: the person reading wants to know when they will be
+ * awake for it.
+ */
+export function slotTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** What an item's publication state means, said plainly. */
+export function stateNote(item: { state?: string; error?: string }): string {
+  switch (item.state) {
+    case 'published':
+      return 'live';
+    case 'scheduled':
+      return 'uploaded, waiting for its time';
+    case 'uploading':
+      return 'uploading now';
+    case 'failed':
+      return `failed: ${item.error ?? 'unknown error'}`;
+    case 'private':
+      return 'on the channel, not public and with no release time set';
+    case 'unlisted':
+      return 'unlisted: only people with the link can watch it';
+    default:
+      return 'not uploaded yet';
+  }
+}
+
 /** Every day from `from` to `to` inclusive, so missing days plot as zero. */
 export function daysBetween(from: string, to: string): string[] {
   const out: string[] = [];
@@ -124,4 +159,56 @@ export function podcastApps(
 
 export function sourceName(source: string): string {
   return SOURCES[source] ?? source;
+}
+
+/** `insightTrafficSourceType` codes, as YouTube Studio words them. */
+const TRAFFIC: Record<string, string> = {
+  SHORTS: 'Shorts feed',
+  SHORTS_FEED: 'Shorts feed',
+  SUBSCRIBER: 'Subscriptions and home',
+  YT_SEARCH: 'YouTube search',
+  RELATED_VIDEO: 'Suggested videos',
+  EXT_URL: 'External sites',
+  PLAYLIST: 'Playlists',
+  YT_PLAYLIST_PAGE: 'Playlist pages',
+  YT_CHANNEL: 'Channel pages',
+  NOTIFICATION: 'Notifications',
+  END_SCREEN: 'End screens',
+  ANNOTATION: 'Cards and annotations',
+  NO_LINK_EMBEDDED: 'Embedded players',
+  NO_LINK_OTHER: 'Direct or unknown',
+  ADVERTISING: 'Advertising',
+  CAMPAIGN_CARD: 'Campaign cards',
+  PROMOTED: 'Promoted',
+  HASHTAGS: 'Hashtag pages',
+  SOUND_PAGE: 'Sound pages',
+  YT_OTHER_PAGE: 'Other YouTube pages',
+  UNKNOWN: 'Unknown',
+};
+
+export function trafficSourceName(code: string): string {
+  return TRAFFIC[code] ?? code.toLowerCase().replace(/_/g, ' ');
+}
+
+const FORMATS: Record<string, string> = {
+  short: 'Shorts',
+  long: 'Long-form',
+  live: 'Live streams',
+  other: 'Other',
+};
+
+export function formatName(format: string): string {
+  return FORMATS[format] ?? format;
+}
+
+/** Outlet kinds, for a page heading. */
+const OUTLET_KINDS: Record<string, string> = {
+  rss: 'RSS feed',
+  youtube: 'YouTube channel',
+  spotify: 'Spotify',
+  apple: 'Apple Podcasts',
+};
+
+export function outletKindName(kind: string): string {
+  return OUTLET_KINDS[kind] ?? kind;
 }

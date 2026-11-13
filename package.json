@@ -14,7 +14,8 @@
     "test": "vitest run",
     "build:dashboard": "npm run build -w @darkrelay/dashboard",
     "synth": "npm run synth -w @darkrelay/infra",
-    "deploy": "npm run build:dashboard && npm exec -w @darkrelay/infra -- cdk deploy --all",
+    "deploy": "npm run build:dashboard && node scripts/cdk.mjs deploy --all",
+    "cdk": "node scripts/cdk.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { videoFormat, type VideoFormat } from './analytics/metrics';
 
 /** Limits YouTube enforces on video metadata. */
 export const YT_TITLE_MAX = 100;
@@ -173,3 +174,32 @@ export const UploadState = z.object({
   updatedAt: z.iso.datetime(),
 });
 export type UploadState = z.infer<typeof UploadState>;
+
+/**
+ * A Short is at most three minutes. Duration alone is a guess (a short talk
+ * is not a Short), so it is only the fallback: `creatorContentType` from
+ * YouTube Analytics decides whenever the video appears in a report.
+ */
+export const SHORT_MAX_SECONDS = 180;
+
+/** Seconds from an ISO 8601 duration as YouTube returns it, e.g. PT1H2M3S. */
+export function parseIsoDuration(iso: string): number | undefined {
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(iso.trim());
+  if (!m || m.slice(1).every((v) => v === undefined)) return undefined;
+  const [d, h, min, sec] = m.slice(1).map((v) => (v === undefined ? 0 : Number(v)));
+  return Math.round(d! * 86400 + h! * 3600 + min! * 60 + sec!);
+}
+
+/**
+ * What kind of video this is. `creatorContentType` wins where YouTube
+ * reported one; otherwise a video at or under three minutes is taken to be a
+ * Short, which is right for a clip feed and wrong for a very short talk.
+ */
+export function classifyVideo(video: {
+  durationSeconds?: number;
+  creatorContentType?: string;
+}): VideoFormat {
+  if (video.creatorContentType) return videoFormat(video.creatorContentType);
+  if (video.durationSeconds === undefined) return 'other';
+  return video.durationSeconds <= SHORT_MAX_SECONDS ? 'short' : 'long';
+}

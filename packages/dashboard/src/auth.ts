@@ -2,6 +2,8 @@ export interface RuntimeConfig {
   apiUrl: string;
   authDomain: string;
   clientId: string;
+  /** Public media base URL, for brand icons. Absent on older deployments. */
+  mediaUrl?: string;
 }
 
 const TOKEN = 'darkrelay.token';

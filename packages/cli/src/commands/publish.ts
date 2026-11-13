@@ -138,7 +138,9 @@ export async function publish(target: string, flags: PublishFlags, global: Globa
   const bucket = new Bucket(bucketName);
 
   if (!(await bucket.exists(layout.showConfig(flags.show)))) {
-    throw new Error(`Show "${flags.show}" does not exist. Create it with: darkrelay show put`);
+    throw new Error(
+      `Brand "${flags.show}" has no feed config (${layout.showConfig(flags.show)}). Create it with: darkrelay show put`,
+    );
   }
 
   const bundleId = newBundleId();

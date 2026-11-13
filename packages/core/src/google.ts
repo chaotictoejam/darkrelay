@@ -62,6 +62,21 @@ export interface YouTubeVideo {
   status?: { privacyStatus?: string; uploadStatus?: string; publishAt?: string };
 }
 
+/**
+ * What `videoDetails` reports about one video. `publishedAt` is when it was
+ * uploaded; `scheduledAt` is the release time YouTube is holding it for,
+ * which only exists while it is private and scheduled. The two are not the
+ * same date and a scheduled video has both.
+ */
+export interface VideoDetails {
+  id: string;
+  duration: string;
+  privacyStatus?: string;
+  title?: string;
+  publishedAt?: string;
+  scheduledAt?: string;
+}
+
 /** Parses "bytes=0-1234" from a 308 Resume Incomplete response. */
 export function nextOffset(range: string | null): number {
   const m = range && /bytes=0-(\d+)/.exec(range);
@@ -267,6 +282,41 @@ export class YouTube {
       }
       pageToken = r.nextPageToken;
     } while (pageToken);
+    return out;
+  }
+
+  /**
+   * Duration and privacy of up to 50 videos per call (1 quota unit each).
+   * Videos the channel cannot see are simply absent from the result.
+   */
+  async videoDetails(ids: string[]): Promise<VideoDetails[]> {
+    const out: VideoDetails[] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const url = new URL(`${this.endpoints.api}/youtube/v3/videos`);
+      url.search = new URLSearchParams({
+        part: 'contentDetails,status,snippet',
+        id: ids.slice(i, i + 50).join(','),
+        maxResults: '50',
+      }).toString();
+      const r = await this.json<{
+        items?: {
+          id: string;
+          contentDetails?: { duration?: string };
+          status?: { privacyStatus?: string; publishAt?: string };
+          snippet?: { title?: string; publishedAt?: string };
+        }[];
+      }>(url.toString(), {}, 'Reading video details');
+      for (const v of r.items ?? []) {
+        out.push({
+          id: v.id,
+          duration: v.contentDetails?.duration ?? '',
+          privacyStatus: v.status?.privacyStatus,
+          title: v.snippet?.title,
+          publishedAt: v.snippet?.publishedAt,
+          scheduledAt: v.status?.publishAt,
+        });
+      }
+    }
     return out;
   }
 

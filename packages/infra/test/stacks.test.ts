@@ -34,7 +34,9 @@ function synth(input: DeploymentConfigInput) {
     env,
     config,
     table: analytics.table,
+    planner: analytics.planner,
     mediaBucket: hosting.mediaBucket,
+    publicBaseUrl: hosting.publicBaseUrl,
   });
   return {
     hosting: Template.fromStack(hosting),
@@ -358,16 +360,71 @@ describe('dashboard', () => {
     });
     const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route'));
     expect(routes.map((r) => r['Properties'].RouteKey).sort()).toEqual([
+      'GET /brands',
+      'GET /brands/{proxy+}',
       'GET /me',
+      'GET /schedule',
+      'GET /schedule/{brand}/plans',
+      'GET /schedule/{brand}/plans/{planId}',
+      'GET /schedule/{brand}/slots',
       'GET /shows',
       'GET /shows/{proxy+}',
       'GET /shows/{show}/catalog',
       'GET /shows/{show}/catalog/{episodeId}',
       'GET /shows/{show}/uploads/{bundleId}',
+      'POST /schedule/{brand}/plans',
+      'POST /schedule/{brand}/plans/{planId}/approve',
       'POST /shows/{show}/uploads',
       'POST /shows/{show}/uploads/{bundleId}/{action}',
     ]);
     for (const r of routes) expect(r['Properties'].AuthorizationType).toBe('JWT');
+  });
+
+  /**
+   * A path the API has no route for returns API Gateway's own 404, which
+   * carries no CORS headers, so the browser reports a network error and the
+   * page shows nothing useful. Checking the route keys against each other
+   * cannot catch that: these are the paths the dashboard actually fetches.
+   */
+  it('has a route for every path the dashboard asks for', () => {
+    const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route')).map((r) =>
+      String(r['Properties'].RouteKey),
+    );
+    const matches = (routeKey: string, method: string, path: string) => {
+      const [m, template = ''] = routeKey.split(' ');
+      if (m !== method) return false;
+      const want = template.split('/').filter(Boolean);
+      const got = path.split('/').filter(Boolean);
+      for (const [i, segment] of want.entries()) {
+        if (segment.endsWith('+}')) return got.length > i;
+        if (got[i] === undefined) return false;
+        if (!segment.startsWith('{') && segment !== got[i]) return false;
+      }
+      return want.length === got.length;
+    };
+    const asked: [string, string][] = [
+      ['GET', '/me'],
+      ['GET', '/shows'],
+      ['GET', '/brands'],
+      ['GET', '/brands/cc'],
+      ['GET', '/brands/cc/episodes/0000000000000001'],
+      ['GET', '/brands/cc/videos/dQw4w9WgXcQ'],
+      ['GET', '/brands/cc/outlets/youtube'],
+      ['GET', '/shows/cc'],
+      ['GET', '/shows/cc/catalog'],
+      ['GET', '/shows/cc/catalog/0000000000000001'],
+      ['POST', '/shows/cc/uploads'],
+      ['GET', '/shows/cc/uploads/20261112000000-abcdef'],
+      ['POST', '/shows/cc/uploads/20261112000000-abcdef/parts'],
+      ['GET', '/schedule'],
+      ['GET', '/schedule/cc/slots'],
+      ['GET', '/schedule/cc/plans'],
+      ['GET', '/schedule/cc/plans/20261112103000-7f3a21'],
+      ['POST', '/schedule/cc/plans'],
+      ['POST', '/schedule/cc/plans/20261112103000-7f3a21/approve'],
+    ];
+    const missing = asked.filter(([m, path]) => !routes.some((r) => matches(r, m, path)));
+    expect(missing).toEqual([]);
   });
 
   it('creates the admin group; per-show groups come from the CLI', () => {

@@ -1,8 +1,10 @@
 import {
   addCounts,
+  brandMetaItem,
   countDownloads,
   emptyCounts,
   metricKeys,
+  type BrandConfig,
   type DailyCounts,
   type EpisodeFile,
   type EpisodeManifest,
@@ -18,7 +20,8 @@ export interface AggregateDeps {
   /** Rows from dailyQuery for the date. */
   queryDay(date: string): Promise<{ rows: Record<string, string>[]; bytesScanned: number }>;
   loadManifest(show: string, episodeId: string): Promise<EpisodeManifest | undefined>;
-  loadShowTitle(show: string): Promise<string | undefined>;
+  /** The brand a slug belongs to, for the row the dashboard's switcher reads. */
+  loadBrand(brand: string): Promise<BrandConfig | undefined>;
   put(items: Record<string, unknown>[]): Promise<void>;
   /** Every daily item for one episode, all sources, oldest first. */
   episodeSeries(show: string, episodeId: string): Promise<MetricItem[]>;
@@ -102,8 +105,8 @@ export async function aggregateDay(deps: AggregateDeps, date: string) {
       updatedAt,
       ...counts,
     } satisfies MetricItem);
-    const title = await deps.loadShowTitle(show);
-    if (title) items.push({ pk: metricKeys.showsPk, sk: metricKeys.showMeta(show), show, title });
+    const brand = await deps.loadBrand(show);
+    if (brand) items.push(brandMetaItem(brand));
   }
   await deps.put(items);
 

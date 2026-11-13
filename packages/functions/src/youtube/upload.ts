@@ -8,19 +8,20 @@ import {
   youtubeMetadata,
   youtubeMetadataHash,
   type ShowConfig,
-  GoogleApiError,
   type YouTube,
-  type YouTubeVideo,
 } from '@darkrelay/core';
 import type { Store } from '../lib/store';
 import { loadShow } from '../publisher/feed';
+import {
+  auditWarning,
+  isStale,
+  newUploadState,
+  readJson,
+  saveState as save,
+  transferVideo,
+} from './transfer';
 
-/** 64 MiB: a multiple of 256 KiB, as resumable uploads require. */
-export const CHUNK_BYTES = 64 * 1024 * 1024;
-/** Leave this much of the Lambda's time to save state and hand off. */
-const RESERVE_MS = 90_000;
-/** An "uploading" state untouched this long is presumed dead and taken over. */
-const STALE_MS = 30 * 60_000;
+export { CHUNK_BYTES } from './transfer';
 
 export interface UploadDeps {
   store: Store;
@@ -59,15 +60,6 @@ export type UploadOutcome =
   | 'uploaded'
   | 'failed';
 
-async function readJson<T>(
-  store: Store,
-  key: string,
-  parse: (v: unknown) => T,
-): Promise<T | undefined> {
-  const raw = await store.getText(key);
-  return raw === undefined ? undefined : parse(JSON.parse(raw));
-}
-
 /**
  * Runs whenever an episode manifest changes. Uploads the episode's video to
  * YouTube once, then keeps the video in step with the episode: a rescheduled
@@ -99,18 +91,11 @@ export async function onEpisodeChanged(
     return 'already';
   }
   if (state?.state === 'uploading' && !event.continuation) {
-    const stale = now.getTime() - Date.parse(state.updatedAt) > STALE_MS;
-    if (!stale) return 'in-progress';
+    if (!isStale(state, now)) return 'in-progress';
     deps.log('Taking over a stalled upload', { stateKey });
   }
   if (!state || state.state !== 'uploading' || event.force) {
-    const fresh: UploadState = {
-      state: 'uploading',
-      offset: 0,
-      warnings: [],
-      startedAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    };
+    const fresh = newUploadState(now);
     // Only one worker may start an upload; a second event loses this race.
     if (!state && !(await store.createIfAbsent(stateKey, JSON.stringify(fresh))))
       return 'in-progress';
@@ -126,11 +111,6 @@ export async function onEpisodeChanged(
     await save(store, stateKey, { ...state, state: 'failed', error: message }, deps.now());
     return 'failed';
   }
-}
-
-async function save(store: Store, key: string, state: UploadState, now: Date) {
-  state.updatedAt = now.toISOString();
-  await store.put(key, JSON.stringify(state, null, 2), { contentType: 'application/json' });
 }
 
 function isFuture(iso: string, now: Date) {
@@ -194,61 +174,18 @@ async function upload(
   const { store } = deps;
   const yt = await deps.youtubeFor(show.youtube!.connection);
   const videoKey = publicKey((manifest.video as { key: string }).key);
+  const resource = videoResource(show, manifest, await loadChapters(store, manifest), deps.now());
 
-  if (!state.sessionUri || state.videoKey !== videoKey) {
-    const head = await store.head(videoKey);
-    if (!head) throw new Error(`Video file missing: ${videoKey}`);
-    const resource = videoResource(show, manifest, await loadChapters(store, manifest), deps.now());
-    state.sessionUri = await yt.startUpload(resource, head.size, contentTypeFor(videoKey));
-    state.total = head.size;
-    state.offset = 0;
-    state.videoKey = videoKey;
-    state.metadataHash = youtubeMetadataHash(resource.snippet);
-    await save(store, stateKey, state, deps.now());
+  const result = await transferVideo(deps, yt, { videoKey, stateKey, resource }, state);
+  if (!result.done) {
+    await deps.continueLater({ show: show.slug, episodeId: event.episodeId, continuation: true });
+    return 'continuing';
   }
-
-  const total = state.total!;
-  let video: YouTubeVideo | undefined;
-  while (!video) {
-    if (deps.timeLeftMs() < RESERVE_MS) {
-      await save(store, stateKey, state, deps.now());
-      await deps.continueLater({ show: show.slug, episodeId: event.episodeId, continuation: true });
-      deps.log('Upload handed off', { stateKey, offset: state.offset, total });
-      return 'continuing';
-    }
-    let result;
-    if (state.offset >= total) {
-      result = await yt.uploadStatus(state.sessionUri!, total);
-    } else {
-      const end = Math.min(state.offset + CHUNK_BYTES, total) - 1;
-      const body = await store.getRange(videoKey, state.offset, end);
-      try {
-        result = await yt.uploadChunk(state.sessionUri!, body, state.offset, total);
-      } catch (e) {
-        // A dropped connection or a 5xx: ask the session where it got to and carry on.
-        if (e instanceof GoogleApiError && e.status < 500) throw e;
-        deps.log('Chunk failed; checking upload status', { error: String(e) });
-        result = await yt.uploadStatus(state.sessionUri!, total);
-      }
-    }
-    if (result.done) video = result.video;
-    else {
-      state.offset = result.next;
-      await save(store, stateKey, state, deps.now());
-    }
-  }
+  const video = result.video;
 
   state.videoId = video.id;
-  const requested = show.youtube!.privacy;
-  if (
-    requested !== 'private' &&
-    video.status?.privacyStatus === 'private' &&
-    !video.status.publishAt
-  ) {
-    state.warnings.push(
-      'YouTube made this upload private. Uploads from a Google Cloud project that has not passed the YouTube API audit are always private; make it public in YouTube Studio, or request the audit.',
-    );
-  }
+  const warning = auditWarning(show.youtube!.privacy, video);
+  if (warning) state.warnings.push(warning);
   await addExtras(deps, yt, show, manifest, video.id, state);
   await linkVideo(deps, manifestKey, manifest, state, show);
   await save(store, stateKey, { ...state, state: 'done', sessionUri: undefined }, deps.now());

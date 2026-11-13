@@ -29,6 +29,21 @@ export class FakeYouTube {
   failSnippet?: number;
   /** Chunks to fail with a 503 after storing nothing (simulates a dropped connection). */
   failNextChunks = 0;
+  channel = { id: 'UCchannel', title: 'The Channel', uploadsPlaylist: 'UUchannel' };
+  /** What `listUploads` returns, newest first. */
+  uploads: { videoId: string; title: string; description?: string; publishedAt?: string }[] = [];
+  /** What `videoDetails` returns, keyed by video id. */
+  details = new Map<
+    string,
+    {
+      duration?: string;
+      privacyStatus?: string;
+      title?: string;
+      publishedAt?: string;
+      /** `status.publishAt`: the release time a scheduled video is held for. */
+      scheduledAt?: string;
+    }
+  >();
   /** What the "audit" forces new videos to. */
   forcePrivate = false;
   reports: (params: URLSearchParams) => { columnHeaders: { name: string }[]; rows: unknown[][] } =
@@ -132,6 +147,56 @@ export class FakeYouTube {
         videoId: j.snippet.resourceId.videoId,
       });
       return { status: 200, body: {} };
+    }
+    if (url.pathname === '/youtube/v3/channels') {
+      return {
+        status: 200,
+        body: {
+          items: [
+            {
+              id: this.channel.id,
+              snippet: { title: this.channel.title },
+              contentDetails: { relatedPlaylists: { uploads: this.channel.uploadsPlaylist } },
+            },
+          ],
+        },
+      };
+    }
+    if (url.pathname === '/youtube/v3/playlistItems' && req.method === 'GET') {
+      // One page per call, so paging is exercised the way YouTube does it.
+      const start = Number(url.searchParams.get('pageToken') ?? 0);
+      const size = Math.max(1, Number(url.searchParams.get('maxResults') ?? 50));
+      const page = this.uploads.slice(start, start + size);
+      const next = start + size < this.uploads.length ? String(start + size) : undefined;
+      return {
+        status: 200,
+        body: {
+          nextPageToken: next,
+          items: page.map((u) => ({
+            snippet: { title: u.title, description: u.description },
+            contentDetails: { videoId: u.videoId, videoPublishedAt: u.publishedAt },
+          })),
+        },
+      };
+    }
+    if (url.pathname === '/youtube/v3/videos' && req.method === 'GET') {
+      const ids = (url.searchParams.get('id') ?? '').split(',').filter(Boolean);
+      return {
+        status: 200,
+        body: {
+          items: ids
+            .filter((id) => this.details.has(id))
+            .map((id) => {
+              const d = this.details.get(id)!;
+              return {
+                id,
+                contentDetails: { duration: d.duration },
+                status: { privacyStatus: d.privacyStatus, publishAt: d.scheduledAt },
+                snippet: { title: d.title, publishedAt: d.publishedAt },
+              };
+            }),
+        },
+      };
     }
     if (url.pathname === '/youtube/v3/videos' && req.method === 'PUT') {
       if (url.searchParams.get('part') === 'snippet') {

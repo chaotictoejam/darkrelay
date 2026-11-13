@@ -541,6 +541,288 @@ fieldset.field {
   color: var(--series-1);
   border-color: currentColor;
 }
+.badge.failed {
+  color: var(--danger);
+  border-color: currentColor;
+}
+/* Private or unlisted: out of sight, but not a date and not a failure. */
+.badge.held {
+  color: var(--text-muted);
+}
+/* A badge beside a title, not alone in a cell of its own. */
+td .badge {
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Not out yet: tinted so a table reads as coming-up above already-published. */
+tr.pending {
+  background: var(--series-1-wash);
+}
+tr.pending td:first-child {
+  border-left: 3px solid var(--series-1);
+}
+tr.pending.failed td:first-child {
+  border-left-color: var(--danger);
+}
 .confirm {
   color: var(--danger);
+}
+
+/* Brand switcher: icons in the header, so which brand you are in is obvious. */
+.switcher {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem 0.25rem 0.3rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+.brand-pill[aria-current] {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: var(--text-secondary);
+}
+.icon {
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+  background: var(--track);
+}
+.icon-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.brand-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.brand-head h1 {
+  margin: 0;
+}
+.brands {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.brands a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--text-primary);
+}
+.brands p {
+  margin: 0.15rem 0 0 2.6rem;
+  font-size: 0.8125rem;
+}
+
+/* Shorts against long-form, and other two-sided splits. */
+.splits {
+  display: grid;
+  gap: 0.5rem;
+}
+.split {
+  display: grid;
+  grid-template-columns: 7rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.875rem;
+}
+.split-label {
+  color: var(--text-secondary);
+}
+.split-num {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.meter {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+.meter-fill {
+  height: 100%;
+  background: var(--series-1);
+}
+@media (max-width: 560px) {
+  .split {
+    grid-template-columns: 5.5rem 1fr;
+  }
+  .split-num {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---- Schedule: the cross-brand calendar and the slot heatmap ---- */
+
+.notice {
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius);
+  background: var(--series-1-wash);
+  color: var(--text-primary);
+  border: 1px solid var(--hairline);
+}
+
+.warn {
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.tag {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cal-day h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.entry {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.entry:first-child {
+  border-top: 0;
+}
+
+.entry-time {
+  flex: 0 0 4.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.entry-body {
+  min-width: 0;
+}
+
+.entry-title {
+  font-weight: 500;
+}
+
+/* A failure is the one thing on this page that must not be skimmed past. */
+.entry.failed {
+  border-left: 3px solid var(--danger);
+  padding-left: 0.6rem;
+}
+
+.heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+table.heat {
+  border-collapse: collapse;
+}
+
+table.heat th {
+  padding: 0 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+table.heat tbody th {
+  padding-right: 0.5rem;
+}
+
+.heat-cell {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--surface-1);
+  border-radius: 2px;
+  background: var(--series-1);
+}
+
+/* Blank is information: nothing has ever been published then. */
+.heat-cell.empty {
+  background: var(--track);
+  opacity: 1;
+}
+
+/* Varied with opacity rather than relative colour syntax, so an older
+   browser shades the week instead of flattening every cell to one tone. */
+.heat-cell.l0,
+.swatch.l0 {
+  opacity: 0.2;
+}
+.heat-cell.l1,
+.swatch.l1 {
+  opacity: 0.4;
+}
+.heat-cell.l2,
+.swatch.l2 {
+  opacity: 0.6;
+}
+.heat-cell.l3,
+.swatch.l3 {
+  opacity: 0.8;
+}
+.heat-cell.l4,
+.swatch.l4 {
+  opacity: 1;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  display: inline-block;
+  background: var(--series-1);
 }

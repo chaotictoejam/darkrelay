@@ -1,5 +1,15 @@
 import { Command, Option } from 'commander';
 import type { GlobalOptions } from './context';
+import { manyBrands, oneBrand } from './brands';
+import {
+  addOutlet,
+  getBrand,
+  listBrands,
+  migrateBrands,
+  putBrand,
+  removeOutlet,
+  setBrandIcon,
+} from './commands/brand';
 import {
   coverToThumbnail,
   listEpisodes,
@@ -19,8 +29,24 @@ import { importCommand } from './commands/import';
 import { migrateMedia } from './commands/migrate';
 import { bundleStatus, publish } from './commands/publish';
 import { getShow, putShow, requestRebuild, setShowStatus, showStatus } from './commands/show';
+import {
+  batchStatus,
+  listShorts,
+  putShorts,
+  scheduleShort,
+  sweepShorts,
+  uploadShortNow,
+} from './commands/shorts';
+import {
+  approveShortsPlan,
+  listShortsPlans,
+  planShorts,
+  showShortsPlan,
+  showSlots,
+} from './commands/plan';
 import { validate } from './commands/validate';
 import * as youtube from './commands/youtube';
+import { OUTLET_KINDS } from '@darkrelay/core';
 
 const program = new Command('darkrelay')
   .description('Publish podcasts to your own DarkRelay deployment')
@@ -46,10 +72,65 @@ show
   .description('Stop updating the public feed (the last one stays up)')
   .action((slug) => setShowStatus(slug, 'draft', g()));
 
+const brand = program
+  .command('brand')
+  .description('Manage brands and the outlets they publish to')
+  .addHelpText(
+    'after',
+    `
+A brand is what DarkRelay publishes and measures; its outlets are the places
+content goes out (an RSS feed DarkRelay hosts, a YouTube channel, Spotify,
+Apple). Content belongs to the brand, not to an outlet. A show is a brand
+with one rss outlet, and keeps its slug, feed URL and GUIDs.`,
+  );
+brand
+  .command('list')
+  .description('Brands in this deployment and their outlets')
+  .action(() => listBrands(g()));
+brand
+  .command('get <slug>')
+  .description("Print a brand's JSON (edit it, then brand put it back)")
+  .action((slug) => getBrand(slug, g()));
+brand
+  .command('put <file>')
+  .description('Create or update a brand from a JSON file')
+  .option('--icon <path>', 'square brand icon (JPEG or PNG, 128-3000 px, under 2 MB)')
+  .action((file, o) => putBrand(file, o, g()));
+brand
+  .command('icon <slug> <image>')
+  .description("Set a brand's icon (square JPEG or PNG, shown in the dashboard)")
+  .action((slug, image) => setBrandIcon(slug, image, g()));
+brand
+  .command('migrate [slug]')
+  .description('Write brand.json for existing shows (all of them without a slug)')
+  .option('--dry-run', 'list what would be written')
+  .option(
+    '--force',
+    "rewrite an existing brand from its show, losing the brand's own name and icon",
+  )
+  .action((slug, o) => migrateBrands(slug, o, g()));
+
+const outlet = brand.command('outlet').description("A brand's outlets");
+outlet
+  .command('add <slug>')
+  .description('Add an outlet to a brand, or replace the one with the same --id')
+  .addOption(new Option('--kind <kind>', 'outlet kind').choices(OUTLET_KINDS).makeOptionMandatory())
+  .option('--id <id>', 'outlet id, unique within the brand (default: the kind)')
+  .option('--label <label>', 'name shown for it in the dashboard')
+  .option('--connection <name>', 'youtube: a channel from `darkrelay youtube connect`')
+  .option('--feed <slug>', 'rss: the feed config to publish through (default: the brand slug)')
+  .option('--url <url>', 'spotify, apple: the brand page on that platform')
+  .action((slug, o) => addOutlet(slug, o, g()));
+outlet
+  .command('remove <slug> <id>')
+  .description('Stop counting an outlet (nothing is deleted or unpublished)')
+  .action((slug, id) => removeOutlet(slug, id, g()));
+
 program
   .command('publish <path>')
   .description('Publish an audio or video file, or a bundle directory with episode.json')
-  .requiredOption('--show <slug>')
+  .option('--brand <slug>', 'the brand to publish to')
+  .addOption(new Option('--show <slug>', 'old name of --brand'))
   .option('--title <title>')
   .option('--description <html>', 'show notes (HTML)')
   .option('--notes <file>', 'read show notes (HTML) from a file')
@@ -76,7 +157,7 @@ program
     'YouTube description (plain text) from a file, instead of the show notes',
   )
   .option('--no-wait', "don't wait for the publish result")
-  .action((path, o) => publish(path, o, g()));
+  .action((path, o) => publish(path, { ...o, show: oneBrand(o) }, g()));
 
 program
   .command('bundle <slug> <bundleId>')
@@ -86,14 +167,15 @@ program
 program
   .command('import <feedUrl>')
   .description('Import an existing feed as a draft show (media stays on the old host)')
-  .requiredOption('--show <slug>', 'slug for the imported show')
+  .option('--brand <slug>', 'slug for the imported brand')
+  .addOption(new Option('--show <slug>', 'old name of --brand'))
   .option('--file <path>', 'read the feed from a saved file instead of fetching it')
   .option('--owner-name <name>')
   .option('--owner-email <email>')
   .option('--dry-run', 'write the result locally instead of uploading')
   .option('--out <dir>', 'output directory for --dry-run')
   .option('--force', 'overwrite an existing show')
-  .action((url, o) => importCommand(url, o, g()));
+  .action((url, o) => importCommand(url, { ...o, show: oneBrand(o) }, g()));
 
 program
   .command('migrate-media <slug>')
@@ -154,6 +236,101 @@ episode
   .option('--dry-run', 'list the episodes it would change')
   .action((slug, guid, o) => coverToThumbnail(slug, guid, o, g()));
 
+const shorts = program
+  .command('shorts')
+  .description('Videos and Shorts: content that is not an episode')
+  .addHelpText(
+    'after',
+    `
+A batch is a directory holding shorts.json and the video files it names.
+Uploading one records each Short against the brand; nothing goes to YouTube
+until a few days before its slot, as a private video with a publishAt.`,
+  );
+shorts
+  .command('put <dir>')
+  .description('Upload a batch of Shorts (a directory with shorts.json)')
+  .option('--brand <slug>', 'the brand they belong to')
+  .addOption(new Option('--show <slug>', 'old name of --brand'))
+  .option('--dry-run', 'list what would be uploaded')
+  .option('--no-wait', "don't wait for the ingest result")
+  .action((dir, o) => putShorts(dir, o, g()));
+shorts
+  .command('list <brand>')
+  .description("A brand's videos and Shorts, their slots and where each one stands")
+  .action((brand) => listShorts(brand, g()));
+shorts
+  .command('batch <brand> <batchId>')
+  .description('The result of an earlier batch upload')
+  .action((brand, batchId) => batchStatus(brand, batchId, g()));
+shorts
+  .command('schedule <brand> <id>')
+  .description('Give one a slot, or move it ("now" releases it immediately)')
+  .requiredOption('--at <when>', '"YYYY-MM-DD HH:mm" (local), ISO with a zone, or "now"')
+  .action((brand, id, o) => scheduleShort(brand, id, o, g()));
+shorts
+  .command('upload <brand> <id>')
+  .description('Upload one now, ahead of its slot')
+  .action((brand, id, o) => uploadShortNow(brand, id, o, g()));
+const plan = shorts
+  .command('plan')
+  .description('Propose a schedule for the Shorts that have no slot yet')
+  .addHelpText(
+    'after',
+    `
+Slots are scored from this brand's own history: how videos published on each
+day and hour did in their first 72 hours, measured against the brand's median
+so one runaway hit cannot own a slot. Slots with no history fall back to a
+general peak-time prior, and a share of every plan is spent on untested slots
+on purpose, because that is the only way the scores improve.
+
+A plan writes nothing. Read it, then approve it:
+  darkrelay shorts plan chaoticcommits
+  darkrelay shorts plan approve chaoticcommits <planId>`,
+  );
+plan
+  .argument('[brand]', 'the brand to plan for')
+  .option('--outlet <id>', 'which YouTube outlet (default: the first one)')
+  .option('--weeks <n>', 'how many weeks to lay out (default 4)')
+  .option('--per-week <n>', 'releases per week (default 3)')
+  .option('--min-gap <hours>', 'hours between releases (default 20)')
+  .option('--hours <list>', 'only these hours, e.g. "15,18,20" or "9-17"')
+  .option('--days <list>', 'only these days, e.g. "sat,sun" or "0,6"')
+  .option('--explore <share>', 'share of slots spent on untested times (default 0.2)')
+  .option('--since <days>', 'ignore history older than this when scoring')
+  .option('--lead-days <n>', 'days between the upload and the slot (default 3)')
+  .option('--zone <iana>', "override the brand's timezone")
+  .option('--replan', 'also move content that already has a slot')
+  .option('--approve', 'approve it immediately instead of reviewing it first')
+  .action((brand, o) => {
+    if (!brand) throw new Error('Which brand? darkrelay shorts plan <brand>');
+    return planShorts(brand, o, g());
+  });
+plan
+  .command('approve <brand> <planId>')
+  .description('Take a plan: write its times onto the content (still uploads nothing)')
+  .action((brand, planId) => approveShortsPlan(brand, planId, g()));
+plan
+  .command('list <brand>')
+  .description("A brand's plans, newest first")
+  .action((brand) => listShortsPlans(brand, g()));
+plan
+  .command('show <brand> <planId>')
+  .description('Read a plan again')
+  .action((brand, planId) => showShortsPlan(brand, planId, g()));
+shorts
+  .command('slots <brand>')
+  .description('Which publish times have worked for a brand, as a week-long heatmap')
+  .option('--zone <iana>', "override the brand's timezone")
+  .option('--format <kind>', 'score only one format: short, long, live')
+  .option('--since <days>', 'ignore history older than this')
+  .action((brand, o) => showSlots(brand, o, g()));
+shorts
+  .command('sweep')
+  .description('Run the hourly pass now: upload what is due, move what changed')
+  .option('--lead-days <n>', 'how far ahead of its slot to upload')
+  .option('--daily-uploads <n>', 'cap per channel per day (quota protection)')
+  .action((o) => sweepShorts(o, g()));
+
 const yt = program.command('youtube').description('YouTube uploads and analytics');
 yt.command('client')
   .description('Store the Google OAuth client (Desktop app) used for YouTube')
@@ -163,7 +340,13 @@ yt.command('client')
   .action((o) => youtube.setClient(o, g()));
 yt.command('connect <name>')
   .description('Sign in to a YouTube channel and store its token (once per channel)')
-  .action((name) => youtube.connect(name, g()));
+  .option('--brand <slug>', "add it as that brand's YouTube outlet, creating the brand if new")
+  .action((name, o) => youtube.connect(name, o, g()));
+yt.command('backfill <brand>')
+  .description("Read a brand's channel history: every upload, and the channel's own numbers")
+  .option('--from <date>', 'first day, YYYY-MM-DD (default: a year ago)')
+  .option('--to <date>', 'last day (default: yesterday)')
+  .action((brand, o) => youtube.backfill(brand, o, g()));
 yt.command('status <slug>')
   .description("Each episode's YouTube video or upload progress")
   .action((slug) => youtube.status(slug, g()));
@@ -225,14 +408,16 @@ dashboard
   .command('add-user <email>')
   .description('Invite someone to the dashboard (Cognito emails a temporary password)')
   .addOption(roleOption())
-  .option('--show <slug...>', 'shows the role applies to (viewer, uploader)')
-  .action((email, o) => addDashboardUser(email, o, g()));
+  .option('--brand <slug...>', 'brands the role applies to (viewer, uploader)')
+  .addOption(new Option('--show <slug...>', 'old name of --brand'))
+  .action((email, o) => addDashboardUser(email, { ...o, show: manyBrands(o) }, g()));
 dashboard
   .command('set-role <email>')
   .description("Change someone's access, e.g. --role uploader --show my-show")
   .addOption(roleOption())
-  .option('--show <slug...>', 'shows the role applies to')
-  .action((email, o) => setDashboardRole(email, o, g()));
+  .option('--brand <slug...>', 'brands the role applies to')
+  .addOption(new Option('--show <slug...>', 'old name of --brand'))
+  .action((email, o) => setDashboardRole(email, { ...o, show: manyBrands(o) }, g()));
 dashboard
   .command('users')
   .description('List dashboard users and their roles')

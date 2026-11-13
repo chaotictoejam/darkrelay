@@ -30,8 +30,42 @@ export interface EpisodeSummary {
   suspectTotal?: number;
 }
 
+/** An outlet as the ingestion runs record it on the brand's row. */
+export interface Outlet {
+  id: string;
+  kind: string;
+  name: string;
+  source: string;
+}
+
+export interface OutletTotals extends Outlet {
+  plays: number;
+  watchSeconds: number;
+  apps: Record<string, number>;
+}
+
+export interface VideoSummary {
+  videoId: string;
+  outlet?: string;
+  title: string;
+  /** When it was uploaded — not when a scheduled video goes live. */
+  publishedAt: string;
+  format: string;
+  /** `public`, `private` or `unlisted`, where the platform reports it. */
+  privacyStatus?: string;
+  /** The release time the platform is holding a scheduled video for. */
+  scheduledAt?: string;
+  durationSeconds?: number;
+  downloads7?: number;
+  downloads30?: number;
+  downloads90?: number;
+  downloadsTotal?: number;
+  watchSecondsTotal?: number;
+}
+
 export interface SeriesResponse {
   show: string;
+  brand?: string;
   from: string;
   to: string;
   daily: Day[];
@@ -43,19 +77,173 @@ export interface SeriesResponse {
     watchSeconds: number;
     apps: Record<string, number>;
   }[];
+  byOutlet: OutletTotals[];
 }
 
 export interface ShowResponse extends SeriesResponse {
+  title?: string;
+  iconKey?: string;
+  iconUrl?: string;
+  outlets?: Outlet[];
   episodes: EpisodeSummary[];
+  videos?: VideoSummary[];
 }
 
 export interface EpisodeResponse extends SeriesResponse {
   episode: EpisodeSummary;
 }
 
+export interface VideoResponse extends SeriesResponse {
+  video: VideoSummary;
+}
+
+export interface BrandSummary {
+  show: string;
+  brand?: string;
+  title: string;
+  iconKey?: string;
+  iconUrl?: string;
+  outlets?: Outlet[];
+}
+
 export interface ShowsResponse {
-  shows: { show: string; title: string }[];
+  shows: BrandSummary[];
+  brands?: BrandSummary[];
   lastRun: { date: string; updatedAt: string } | null;
+}
+
+export interface ChannelDay {
+  date: string;
+  views: number;
+  watchSeconds: number;
+  subscribersGained: number;
+  subscribersLost: number;
+  trafficSources: Record<string, number>;
+  formats: Record<string, { views: number; watchSeconds: number }>;
+}
+
+/** A channel's own numbers: properties of the outlet, not of one video. */
+export interface OutletResponse {
+  show: string;
+  brand: string;
+  title: string;
+  outlet: Outlet;
+  from: string;
+  to: string;
+  channel: {
+    daily: ChannelDay[];
+    totals: Omit<ChannelDay, 'date'>;
+    subscriberChange: number;
+  };
+  content: SeriesResponse;
+  videos: VideoSummary[];
+}
+
+/** One piece of content on the schedule, as the calendar shows it. */
+export interface ScheduleEntry {
+  brand: string;
+  brandTitle: string;
+  id: string;
+  title: string;
+  kind: string;
+  publishAt?: string;
+  outlet?: string;
+  state?: string;
+  externalId?: string;
+  error?: string;
+  warnings?: string[];
+  parentId?: string;
+}
+
+export interface PendingPlan {
+  brand: string;
+  planId: string;
+  createdAt: string;
+  items: number;
+  from: string;
+  to: string;
+  firstAt?: string;
+}
+
+/** Everything coming up, across every brand the viewer can see. */
+export interface ScheduleResponse {
+  now: string;
+  brands: {
+    brand: string;
+    title: string;
+    iconKey?: string;
+    iconUrl?: string;
+    canSchedule: boolean;
+  }[];
+  upcoming: ScheduleEntry[];
+  unscheduled: ScheduleEntry[];
+  plans: PendingPlan[];
+}
+
+/** One slot's score, as the heatmap reads it. */
+export interface SlotScore {
+  day: number;
+  hour: number;
+  key: string;
+  score: number;
+  samples: number;
+  prior: number;
+  basis: 'history' | 'blend' | 'prior';
+  views?: number;
+  viewRatio?: number;
+  subsPerMille?: number;
+  evidence?: { id: string; title?: string; publishedAt: string }[];
+}
+
+export interface SlotScoresResponse {
+  zone: string;
+  samples: number;
+  fellBackToAllFormats?: boolean;
+  slots: SlotScore[];
+}
+
+export interface PlanAssignment {
+  id: string;
+  title: string;
+  kind: string;
+  publishAt: string;
+  slot: string;
+  slotLabel: string;
+  score: number;
+  basis: 'history' | 'blend' | 'prior';
+  explore: boolean;
+  reason: string;
+}
+
+export interface SchedulePlan {
+  planId: string;
+  brand: string;
+  outlet: string;
+  zone: string;
+  createdAt: string;
+  from: string;
+  to: string;
+  perWeek: number;
+  minGapHours: number;
+  exploreShare: number;
+  samples: number;
+  assignments: PlanAssignment[];
+  unplaced: { id: string; title: string; reason: string }[];
+  untouched: { id: string; title: string; publishAt: string }[];
+  warnings: string[];
+  approvedAt?: string;
+  applied: { id: string; publishAt: string }[];
+}
+
+export interface PlansResponse {
+  brand: string;
+  plans: SchedulePlan[];
+}
+
+export interface ApprovalResponse {
+  plan: SchedulePlan;
+  applied: { id: string; publishAt: string }[];
+  skipped: { id: string; reason: string }[];
 }
 
 /** What the signed-in user may do. `view` is null for admins (every show). */

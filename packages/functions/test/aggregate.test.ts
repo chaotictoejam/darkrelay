@@ -1,4 +1,4 @@
-import { EpisodeManifest, metricKeys, type MetricItem } from '@darkrelay/core';
+import { BrandConfig, EpisodeManifest, metricKeys, type MetricItem } from '@darkrelay/core';
 import { describe, expect, it } from 'vitest';
 import {
   aggregateDay,
@@ -34,7 +34,13 @@ function fakeDeps(rows: Record<string, string>[]) {
     queryDay: async () => ({ rows, bytesScanned: 1234 }),
     loadManifest: async (show, id) =>
       show === 'chaotic-commits' && id === ID ? manifest : undefined,
-    loadShowTitle: async () => 'Chaotic Commits',
+    loadBrand: async (slug) =>
+      BrandConfig.parse({
+        schemaVersion: 1,
+        slug,
+        name: 'Chaotic Commits',
+        outlets: [{ kind: 'rss', id: 'rss', show: slug }],
+      }),
     put: async (items) => {
       for (const i of items) table.set(`${i['pk']}|${i['sk']}`, i);
     },
@@ -83,7 +89,10 @@ describe('aggregateDay', () => {
     expect(table.get('S#chaotic-commits#ALL|D#2026-10-11#cloudfront')).toMatchObject({
       downloads: 2,
     });
-    expect(table.get('SHOWS|S#chaotic-commits')).toMatchObject({ title: 'Chaotic Commits' });
+    expect(table.get('SHOWS|S#chaotic-commits')).toMatchObject({
+      title: 'Chaotic Commits',
+      outlets: [{ id: 'rss', kind: 'rss', source: 'cloudfront' }],
+    });
     expect(table.get(`S#chaotic-commits|E#${ID}`)).toMatchObject({
       title: 'Ep 1',
       downloads7: 2,

@@ -1,0 +1,25 @@
+{
+  "slug": "my-brand",
+  "name": "My Brand",
+  "icon": {
+    "key": "my-brand/icon-1a2b3c4d.png"
+  },
+  "outlets": [
+    {
+      "kind": "rss",
+      "id": "rss",
+      "show": "my-brand"
+    },
+    {
+      "kind": "youtube",
+      "id": "youtube",
+      "connection": "my-brand",
+      "label": "Main channel"
+    },
+    {
+      "kind": "spotify",
+      "id": "spotify",
+      "url": "https://open.spotify.com/show/0000000000000000000000"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "brand": "my-brand",
+  "kind": "short",
+  "defaults": {
+    "description": "Full episode in the description.\n\n#podcast #softwareengineering",
+    "tags": ["software engineering", "podcast"]
+  },
+  "shorts": [
+    {
+      "file": "clip-01.mp4",
+      "title": "The bus factor nobody admits to",
+      "parentId": "1184d345-27d4-4e26-91a1-49d12ffe197e",
+      "publishAt": "2026-12-01T17:00:00Z"
+    },
+    {
+      "file": "clip-02.mp4",
+      "title": "Rebase and chill",
+      "description": "A standalone Short with its own copy.",
+      "tags": ["git"],
+      "thumbnail": "clip-02.jpg"
+    }
+  ]
+}
