@@ -136,6 +136,7 @@ export async function ingestBatch(
         publishAt: short.publishAt,
         publications: [{ outlet, state: 'planned', publishAt: short.publishAt, warnings: [] }],
         batchId,
+        seq: index,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
       },

@@ -14,6 +14,7 @@ import {
   aws_cognito as cognito,
   aws_dynamodb as dynamodb,
   aws_iam as iam,
+  aws_lambda as lambda,
   aws_s3 as s3,
   aws_s3_deployment as s3deploy,
   custom_resources as cr,
@@ -27,6 +28,13 @@ export interface DashboardStackProps extends StackProps {
   config: DeploymentConfig;
   table: dynamodb.ITable;
   mediaBucket: s3.IBucket;
+  /**
+   * Slot scoring and planning, from the analytics stack. The schedule routes
+   * go straight to it: it already holds exactly the permissions planning
+   * needs, and granting them to a second function would only widen what a
+   * dashboard request can reach.
+   */
+  planner: lambda.IFunction;
   /** Public media base URL, so the dashboard can show brand icons. */
   publicBaseUrl: string;
 }
@@ -203,6 +211,21 @@ export class DashboardStack extends Stack {
       integration: new integrations.HttpLambdaIntegration('ReadBrands', reader),
       authorizer,
     });
+    // The schedule: the calendar, the slot heatmap, and plans. Reading needs
+    // `viewer`; building or approving a plan needs `uploader`, which the
+    // planner itself checks — the route only decides who is asked.
+    const schedule = new integrations.HttpLambdaIntegration('Schedule', props.planner);
+    for (const [path, method] of [
+      ['/schedule', apigw.HttpMethod.GET],
+      ['/schedule/{brand}/slots', apigw.HttpMethod.GET],
+      ['/schedule/{brand}/plans', apigw.HttpMethod.GET],
+      ['/schedule/{brand}/plans', apigw.HttpMethod.POST],
+      ['/schedule/{brand}/plans/{planId}', apigw.HttpMethod.GET],
+      ['/schedule/{brand}/plans/{planId}/approve', apigw.HttpMethod.POST],
+    ] as const) {
+      api.addRoutes({ path, methods: [method], integration: schedule, authorizer });
+    }
+
     const upload = new integrations.HttpLambdaIntegration('Upload', uploads);
     for (const [path, method] of [
       ['/me', apigw.HttpMethod.GET],

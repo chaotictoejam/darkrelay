@@ -34,6 +34,7 @@ function synth(input: DeploymentConfigInput) {
     env,
     config,
     table: analytics.table,
+    planner: analytics.planner,
     mediaBucket: hosting.mediaBucket,
     publicBaseUrl: hosting.publicBaseUrl,
   });
@@ -362,11 +363,17 @@ describe('dashboard', () => {
       'GET /brands',
       'GET /brands/{proxy+}',
       'GET /me',
+      'GET /schedule',
+      'GET /schedule/{brand}/plans',
+      'GET /schedule/{brand}/plans/{planId}',
+      'GET /schedule/{brand}/slots',
       'GET /shows',
       'GET /shows/{proxy+}',
       'GET /shows/{show}/catalog',
       'GET /shows/{show}/catalog/{episodeId}',
       'GET /shows/{show}/uploads/{bundleId}',
+      'POST /schedule/{brand}/plans',
+      'POST /schedule/{brand}/plans/{planId}/approve',
       'POST /shows/{show}/uploads',
       'POST /shows/{show}/uploads/{bundleId}/{action}',
     ]);
@@ -409,6 +416,12 @@ describe('dashboard', () => {
       ['POST', '/shows/cc/uploads'],
       ['GET', '/shows/cc/uploads/20261112000000-abcdef'],
       ['POST', '/shows/cc/uploads/20261112000000-abcdef/parts'],
+      ['GET', '/schedule'],
+      ['GET', '/schedule/cc/slots'],
+      ['GET', '/schedule/cc/plans'],
+      ['GET', '/schedule/cc/plans/20261112103000-7f3a21'],
+      ['POST', '/schedule/cc/plans'],
+      ['POST', '/schedule/cc/plans/20261112103000-7f3a21/approve'],
     ];
     const missing = asked.filter(([m, path]) => !routes.some((r) => matches(r, m, path)));
     expect(missing).toEqual([]);

@@ -21,6 +21,12 @@ export interface DailyCounts {
   serverDownloads: number;
   /** Downloads (included in `downloads`) from networks that look like a crawler. */
   suspectDownloads?: number;
+  /**
+   * Subscribers gained from this item on this day, where the platform
+   * attributes them to a video. Only YouTube reports it; a feed has no
+   * equivalent, so it is absent rather than zero elsewhere.
+   */
+  subscribersGained?: number;
   apps: Record<string, number>;
   countries: Record<string, number>;
   devices: Record<string, number>;
@@ -116,6 +122,8 @@ export function addCounts(into: DailyCounts, from: DailyCounts): DailyCounts {
   if (from.suspectDownloads)
     into.suspectDownloads = (into.suspectDownloads ?? 0) + from.suspectDownloads;
   if (from.watchSeconds) into.watchSeconds = (into.watchSeconds ?? 0) + from.watchSeconds;
+  if (from.subscribersGained)
+    into.subscribersGained = (into.subscribersGained ?? 0) + from.subscribersGained;
   for (const k of ['apps', 'countries', 'devices'] as const) {
     for (const [name, n] of Object.entries(from[k])) into[k][name] = (into[k][name] ?? 0) + n;
   }

@@ -6,6 +6,8 @@ export * from './guid';
 export * from './image';
 export * from './layout';
 export * from './model';
+export * from './plan';
+export * from './slots';
 export * from './xml';
 export * from './feed/build';
 export * from './feed/import';

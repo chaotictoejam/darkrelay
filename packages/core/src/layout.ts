@@ -44,6 +44,12 @@ export const layout = {
   contentMedia: (brand: string, id: string, file: string) =>
     `catalog/${brand}/content/${id}/${file}`,
   contentUpload: (brand: string, id: string) => `catalog/${brand}/content/${id}.upload.json`,
+  /**
+   * Proposed schedules, kept so a plan can be read, approved later, and
+   * looked at again afterwards to see what it actually did.
+   */
+  plansPrefix: (brand: string) => `catalog/${brand}/plans/`,
+  contentPlan: (brand: string, planId: string) => `catalog/${brand}/plans/${planId}.json`,
 };
 
 const CATALOG_KEY = /^catalog\/([a-z0-9][a-z0-9-]{0,62})\/([^/]+)$/;

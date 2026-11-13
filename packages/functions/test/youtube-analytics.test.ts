@@ -104,6 +104,22 @@ function standardReports() {
         ],
       };
     }
+    // One video's own days. The real API tells this apart from the
+    // channel-wide report by the video filter, so the fake does too.
+    if (dimensions === 'day' && (p.get('filters') ?? '').startsWith('video==')) {
+      const video = p.get('filters')!.split('==')[1];
+      const views = video === 'v1' ? 10 : 20;
+      const subs = p.get('metrics')!.includes('subscribersGained');
+      return {
+        columnHeaders: subs
+          ? col('day', 'views', 'estimatedMinutesWatched', 'subscribersGained')
+          : col('day', 'views', 'estimatedMinutesWatched'),
+        rows: [
+          ['2026-10-09', views, 30.5, ...(subs ? [1] : [])],
+          ['2026-10-10', views * 2, 61, ...(subs ? [3] : [])],
+        ],
+      };
+    }
     if (dimensions === 'day' && p.get('metrics')!.includes('subscribersGained')) {
       return {
         columnHeaders: col(
@@ -176,6 +192,37 @@ describe('pullYouTube', () => {
       publishedAt: '2026-10-08T12:00:00Z',
       downloadsTotal: 60,
     });
+  });
+
+  it("records a video's own subscribers, which is what slot scoring needs", async () => {
+    await pullYouTube(deps(), RANGE);
+    // Subscribers are attributed per video, so a publish time can be judged
+    // on the followers it won and not only on the views it got.
+    expect(table.get(`${metricKeys.videoSeries('cc', 's1')}|D#2026-10-10#youtube`)).toMatchObject({
+      downloads: 40,
+      subscribersGained: 3,
+    });
+  });
+
+  it('keeps the night\u2019s views when a channel refuses the subscriber metric', async () => {
+    const asked: string[] = [];
+    const standard = fake.reports;
+    fake.reports = (p) => {
+      const perVideo = (p.get('filters') ?? '').startsWith('video==');
+      if (perVideo) asked.push(p.get('metrics')!);
+      if (perVideo && p.get('metrics')!.includes('subscribersGained')) {
+        throw new Error('subscribersGained is not supported for this channel');
+      }
+      return standard(p);
+    };
+
+    await pullYouTube(deps(), RANGE);
+    const day = table.get(`${metricKeys.videoSeries('cc', 's1')}|D#2026-10-10#youtube`);
+    expect(day).toMatchObject({ downloads: 40 });
+    expect(day!['subscribersGained']).toBeUndefined();
+    // Asked once, refused once, then stopped asking for the rest of the run.
+    expect(asked.filter((m) => m.includes('subscribersGained'))).toHaveLength(1);
+    fake.reports = standard;
   });
 
   it('sums episodes and videos into the brand total, and leaves channel numbers out of it', async () => {

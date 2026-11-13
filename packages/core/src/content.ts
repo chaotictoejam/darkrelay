@@ -92,6 +92,12 @@ export const ContentItem = z.object({
   publications: z.array(Publication).default([]),
   /** The batch it arrived in, for `shorts status`. */
   batchId: z.string().optional(),
+  /**
+   * Position in the batch manifest. The planner releases a batch in the
+   * order it was written, which matters when the clips tell a story in
+   * sequence; ids are hashes and sort arbitrarily.
+   */
+  seq: z.number().int().nonnegative().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

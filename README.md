@@ -131,7 +131,37 @@ An hourly sweep uploads whatever is due, moves anything whose slot changed since
 
 Uploading days ahead is also what makes an hourly pass precise enough: the slot is kept by YouTube, not by the sweep, so an hour of slack before the upload costs nothing.
 
-An item with no slot is never uploaded. Phase 4's planner is what fills slots in for a whole batch; until then, set them in the manifest or with `shorts schedule`.
+An item with no slot is never uploaded.
+
+### Picking the slots
+
+The YouTube Analytics API has no hour-of-day dimension, so there is no way to ask when an audience is awake. What it does report is how each video did, and DarkRelay knows when each one went out — so slots are scored from the brand's **own history**, bucketed by the day of week and hour it was published in, in the brand's own timezone.
+
+```bash
+npx darkrelay shorts slots my-brand                      # the week, as a heatmap
+npx darkrelay shorts plan my-brand --weeks 6 --per-week 3
+npx darkrelay shorts plan approve my-brand 20261112103000-7f3a21
+```
+
+Each video contributes three signals from its first 72 hours: views, the share of it that got watched, and subscribers gained per thousand views. Two things keep that honest on a channel with little data:
+
+- **One viral Short cannot own a slot.** Every video is measured against the brand's own median and clamped at three times it, so a runaway hit counts as a good video, not as proof about an hour of the week.
+- **A thin slot is pulled back toward a prior.** A bucket's score is mixed with a general peak-time prior in proportion to how little it holds, so one sample does not look like a finding. The prior is capped at the value of one typical slot, so a slot nothing is known about can never outrank one that has earned a better number.
+
+A share of every plan — 20% by default, `--explore` to change it — goes to the **least-tested** slots rather than the best-scoring ones, and is marked `*` in the plan. Without it the first slot that happens to do well owns the schedule forever and nothing is ever learned about the rest of the week. Shorts are scored against Shorts where there are enough of them, because a three-minute talk says nothing about when to post a Short; the plan says so when it had to fall back.
+
+**A plan writes nothing.** It is stored at `catalog/<brand>/plans/<planId>.json` to be read, and `plan approve` is the only command that puts the times onto content — and even that uploads nothing: the hourly sweep picks each item up when its slot comes within the lead time, exactly as it does for a slot set by hand.
+
+```
+  Mon, Nov 16, 18:00         Bus factor, part one
+    Mon 18:00  score 1.00  nothing published in this slot yet: general prior for the hour
+  Sat, Nov 21, 18:00         Bus factor, part two
+    Sat 18:00  score 1.74  4 past videos here averaged 1.74x a typical slot
+* Mon, Nov 23, 19:00         Bus factor, part three
+    Mon 19:00  score 1.00  testing a slot nothing has been published in yet
+```
+
+A clip is never scheduled before the episode it was clipped from, and a clip that cannot be placed is reported rather than placed wrongly. Plans are deterministic: the same content, scores and rules give the same plan, so one can be rebuilt and compared. The planner reads the metrics table and the catalog and has no YouTube credentials at all, which is what keeps a planning mistake from becoming a published video.
 
 ## Deploy
 
@@ -162,6 +192,8 @@ Everything deploys to **us-east-1** (CloudFront certificates and log delivery mu
 | `priceClass` | `100` | CloudFront edge coverage. `100` (North America and Europe) is cheapest. |
 | `shorts.leadDays` | `3` | How many days before its slot a Short is uploaded. |
 | `shorts.dailyUploads` | `5` | Uploads per channel per day. Six is YouTube's quota ceiling. |
+| `shorts.timezone` | `America/New_York` | The clock slot scoring and planning work in. A brand may set its own in `brand.json`. |
+| `shorts.perWeek` | `3` | Releases per week a plan lays out unless asked for otherwise. |
 | `tags` | none | Extra tags on every resource, e.g. `{"CostCenter": "podcast"}`. See [Cost Explorer tags](#cost-explorer-tags). |
 
 **Domain with Route 53** (the zone must be in the same account; DNS records and the certificate are created for you):
@@ -370,7 +402,15 @@ npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 
 
 ### What the dashboard shows
 
-A **brand switcher** with icons sits in the header whenever you can see more than one brand. A brand page sums every outlet and lists its episodes and its videos. A YouTube outlet has a page of its own: channel views per day, subscribers gained and lost, Shorts against long-form, and where the views came from.
+A **brand switcher** with icons sits in the header whenever you can see more than one brand. A brand page sums every outlet and lists its episodes and its videos. A YouTube outlet has a page of its own: channel views per day, subscribers gained and lost, Shorts against long-form, and where the views came from. **Schedule** shows what is going out next, across every brand.
+
+### The schedule in the dashboard
+
+**Schedule** in the header is a cross-brand calendar: every video and Short going out, grouped by day in your own time zone, with where each one stands — not uploaded yet, uploaded and waiting, live, or failed with the reason. Anything with no slot is listed separately, because nothing is ever uploaded without one. It covers content, not episodes: an episode's release is owned by its feed, and finding future ones means reading every manifest, which is too much for a page load.
+
+Each brand has a **slot page** (`#/s/<brand>/slots`) showing the week as a heatmap, a cell per hour, shaded by how that hour has actually done for that brand. A blank cell means nothing has ever been published then — which is information, so it is left blank rather than shaded as though it were bad. Hovering a cell gives the numbers behind it: the score, how many videos it rests on, their first-72h views, how much got watched, and subscribers won.
+
+The same page proposes a plan and is the one place to approve it. Approving writes the times onto the content and nothing else — each item still goes to YouTube a few days before its slot, through the same hourly sweep as a slot set by hand. Reading the calendar and the heatmap needs `viewer`; proposing or approving a plan needs `uploader`, checked in the API rather than by hiding a button.
 
 ### Dashboard access
 
@@ -476,7 +516,7 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 | Prefix | Public | What |
 | --- | --- | --- |
 | `public/` | yes | Feeds and media. CloudFront's origin path, so `public/` is dropped from URLs. |
-| `catalog/` | no | `brand.json`, `show.json`, episode manifests, content records and their media, draft preview feeds, feed errors. The source of truth. |
+| `catalog/` | no | `brand.json`, `show.json`, episode manifests, content records and their media, schedule plans, draft preview feeds, feed errors. The source of truth. |
 | `inbox/` | no | Uploaded bundles waiting to publish. Expire after 7 days. |
 | `inbox-status/` | no | Publish results the CLI reads. |
 | `requests/` | no | Rebuild requests. |
@@ -490,8 +530,8 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 5. **Brands and outlets** (done): shows became brands, outlets are the places content goes out
 6. **YouTube channels as outlets** (done): channel metrics, uploads backfill, outlet pages
 7. **Videos and Shorts** (done): content kinds, batch manifests, just-in-time uploads
-8. Slot scoring and a Shorts planner you approve before anything uploads
-9. Dashboard: brand switcher, per-outlet pages, slot heatmap, cross-brand calendar
+8. **Slot scoring and a Shorts planner** (done): scored from your own history, approved before anything uploads
+9. **Dashboard** (done): brand switcher, per-outlet pages, slot heatmap, cross-brand calendar with plan approval
 10. HLS retention curves
 11. Prefix mode: analytics for shows that stay on another host
 12. Apple and Spotify CSV imports

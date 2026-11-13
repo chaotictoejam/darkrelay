@@ -163,20 +163,14 @@ async function pullOutlet(
   const items: Record<string, unknown>[] = [];
   const touchedEpisodes: EpisodeManifest[] = [];
   const touchedVideos: string[] = [];
+  const dailyFor = videoDays(report, log);
 
   for (const { videoId } of active) {
     const episode = episodeByVideo.get(videoId);
     const pk = episode
       ? metricKeys.episodeSeries(brand.slug, idFor(episode))
       : metricKeys.videoSeries(brand.slug, videoId);
-    const rows = await report({
-      startDate: range.from,
-      endDate: range.to,
-      metrics: 'views,estimatedMinutesWatched',
-      dimensions: 'day',
-      filters: `video==${videoId}`,
-      sort: 'day',
-    });
+    const rows = await dailyFor(videoId, range);
     for (const row of rows) {
       const date = String(row['day']);
       const views = Number(row['views'] ?? 0);
@@ -185,6 +179,9 @@ async function pullOutlet(
         downloads: views,
         watchSeconds: Math.round(Number(row['estimatedMinutesWatched'] ?? 0) * 60),
         apps: views ? { YouTube: views } : {},
+        ...(row['subscribersGained'] === undefined
+          ? {}
+          : { subscribersGained: Number(row['subscribersGained']) || 0 }),
       };
       items.push({
         pk,
@@ -292,6 +289,40 @@ async function pullOutlet(
     videos: touchedVideos.length,
   });
   return touchedVideos.length;
+}
+
+/**
+ * One video's daily numbers. Subscribers gained is asked for alongside the
+ * views, because slot scoring needs to know which publish times win
+ * subscribers and not merely views — but if a channel refuses the metric the
+ * run drops it once and carries on with the rest, rather than losing a
+ * night's views over a breakdown.
+ */
+function videoDays(report: Report, log: YouTubeAnalyticsDeps['log']) {
+  let withSubscribers = true;
+  return async (videoId: string, range: Range) => {
+    const params = {
+      startDate: range.from,
+      endDate: range.to,
+      dimensions: 'day',
+      filters: `video==${videoId}`,
+      sort: 'day',
+    };
+    if (withSubscribers) {
+      try {
+        return await report({
+          ...params,
+          metrics: 'views,estimatedMinutesWatched,subscribersGained',
+        });
+      } catch (e) {
+        withSubscribers = false;
+        log('subscribersGained unavailable for this channel; continuing without it', {
+          error: String(e),
+        });
+      }
+    }
+    return report({ ...params, metrics: 'views,estimatedMinutesWatched' });
+  };
 }
 
 /**

@@ -32,6 +32,7 @@ new DashboardStack(app, `${config.stackPrefix}Dashboard`, {
   env,
   config,
   table: analytics.table,
+  planner: analytics.planner,
   mediaBucket: hosting.mediaBucket,
   publicBaseUrl: hosting.publicBaseUrl,
 });

@@ -11,13 +11,14 @@ import {
   aws_events_targets as eventTargets,
   aws_glue as glue,
   aws_iam as iam,
+  aws_lambda as lambda,
   aws_s3 as s3,
 } from 'aws-cdk-lib';
 import { ACCESS_LOG_FIELDS, ACCESS_LOG_PREFIX, parquetColumn } from '@darkrelay/core';
 import type { Construct } from 'constructs';
 import type { DeploymentConfig } from '../config';
 import { nodeFunction } from '../lambda';
-import { youtubeAnalytics } from '../youtube';
+import { shortsPlanner, youtubeAnalytics } from '../youtube';
 
 export interface AnalyticsStackProps extends StackProps {
   config: DeploymentConfig;
@@ -36,6 +37,8 @@ export const ATHENA_RESULTS_PREFIX = 'athena-results/';
  */
 export class AnalyticsStack extends Stack {
   readonly table: dynamodb.Table;
+  /** Slot scoring and planning. The dashboard's schedule routes reach it. */
+  readonly planner: lambda.IFunction;
   readonly aggregator: ReturnType<typeof nodeFunction>;
 
   constructor(scope: Construct, id: string, props: AnalyticsStackProps) {
@@ -168,8 +171,12 @@ export class AnalyticsStack extends Stack {
     });
 
     const yt = youtubeAnalytics(this, config, mediaBucket, this.table);
+    this.planner = shortsPlanner(this, config, mediaBucket, this.table);
 
     new CfnOutput(this, 'YouTubeAnalyticsFunctionName', { value: yt.functionName });
+    new CfnOutput(this, 'ShortsPlannerFunctionName', {
+      value: this.planner.functionName,
+    });
     new CfnOutput(this, 'MetricsTableName', { value: this.table.tableName });
     new CfnOutput(this, 'AggregatorFunctionName', { value: this.aggregator.functionName });
     new CfnOutput(this, 'AthenaWorkGroup', { value: workgroupName });

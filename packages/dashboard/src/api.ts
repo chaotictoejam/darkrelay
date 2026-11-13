@@ -134,6 +134,113 @@ export interface OutletResponse {
   videos: VideoSummary[];
 }
 
+/** One piece of content on the schedule, as the calendar shows it. */
+export interface ScheduleEntry {
+  brand: string;
+  brandTitle: string;
+  id: string;
+  title: string;
+  kind: string;
+  publishAt?: string;
+  outlet?: string;
+  state?: string;
+  externalId?: string;
+  error?: string;
+  warnings?: string[];
+  parentId?: string;
+}
+
+export interface PendingPlan {
+  brand: string;
+  planId: string;
+  createdAt: string;
+  items: number;
+  from: string;
+  to: string;
+  firstAt?: string;
+}
+
+/** Everything coming up, across every brand the viewer can see. */
+export interface ScheduleResponse {
+  now: string;
+  brands: {
+    brand: string;
+    title: string;
+    iconKey?: string;
+    iconUrl?: string;
+    canSchedule: boolean;
+  }[];
+  upcoming: ScheduleEntry[];
+  unscheduled: ScheduleEntry[];
+  plans: PendingPlan[];
+}
+
+/** One slot's score, as the heatmap reads it. */
+export interface SlotScore {
+  day: number;
+  hour: number;
+  key: string;
+  score: number;
+  samples: number;
+  prior: number;
+  basis: 'history' | 'blend' | 'prior';
+  views?: number;
+  viewRatio?: number;
+  subsPerMille?: number;
+  evidence?: { id: string; title?: string; publishedAt: string }[];
+}
+
+export interface SlotScoresResponse {
+  zone: string;
+  samples: number;
+  fellBackToAllFormats?: boolean;
+  slots: SlotScore[];
+}
+
+export interface PlanAssignment {
+  id: string;
+  title: string;
+  kind: string;
+  publishAt: string;
+  slot: string;
+  slotLabel: string;
+  score: number;
+  basis: 'history' | 'blend' | 'prior';
+  explore: boolean;
+  reason: string;
+}
+
+export interface SchedulePlan {
+  planId: string;
+  brand: string;
+  outlet: string;
+  zone: string;
+  createdAt: string;
+  from: string;
+  to: string;
+  perWeek: number;
+  minGapHours: number;
+  exploreShare: number;
+  samples: number;
+  assignments: PlanAssignment[];
+  unplaced: { id: string; title: string; reason: string }[];
+  untouched: { id: string; title: string; publishAt: string }[];
+  warnings: string[];
+  approvedAt?: string;
+  applied: { id: string; publishAt: string }[];
+}
+
+export interface PlansResponse {
+  brand: string;
+  plans: SchedulePlan[];
+}
+
+export interface ApprovalResponse {
+  plan: SchedulePlan;
+  applied: { id: string; publishAt: string }[];
+  skipped: { id: string; reason: string }[];
+}
+
 /** What the signed-in user may do. `view` is null for admins (every show). */
 export interface MeResponse {
   admin: boolean;

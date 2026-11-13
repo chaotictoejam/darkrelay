@@ -106,6 +106,13 @@ export const BrandConfig = z
     name: z.string().min(1),
     /** Square image in the media bucket: the dashboard nav and brand pages. */
     icon: AssetRef.optional(),
+    /**
+     * The clock this brand's audience keeps, as an IANA name. Slot scoring
+     * and scheduling are done in it, because "a good time to post" is a
+     * statement about an audience's evening, not about UTC. Defaults to the
+     * deployment's own zone.
+     */
+    timezone: z.string().min(1).optional(),
     outlets: z.array(Outlet).default([]),
     updatedAt: z.iso.datetime().optional(),
   })

@@ -29,6 +29,7 @@ import {
   trend,
   videosTable,
 } from './ui';
+import { calendarView, slotsView } from './schedule';
 import { editView, manageView, uploadView } from './upload';
 
 const app = document.getElementById('app')!;
@@ -43,8 +44,13 @@ const brands = (config: RuntimeConfig) => (brandsPromise ??= get<ShowsResponse>(
 
 function parseHash() {
   const [path = '', query = ''] = location.hash.replace(/^#/, '').split('?');
-  const days = Number(new URLSearchParams(query).get('days'));
-  return { parts: path.split('/').filter(Boolean), days: RANGES.includes(days) ? days : 90 };
+  const params = new URLSearchParams(query);
+  const days = Number(params.get('days'));
+  return {
+    parts: path.split('/').filter(Boolean),
+    days: RANGES.includes(days) ? days : 90,
+    params,
+  };
 }
 
 /** The switcher lives in the header, so it is there on every page. */
@@ -223,11 +229,14 @@ function currentBrand(parts: string[]): string | undefined {
 }
 
 async function render(config: RuntimeConfig) {
-  const { parts, days } = parseHash();
+  const { parts, days, params } = parseHash();
   app.classList.add('loading');
   renderSwitcher(config, currentBrand(parts)).catch(() => {});
   try {
-    if (parts[0] === 'upload') await uploadView(app, config, parts[1]);
+    if (parts[0] === 'schedule') await calendarView(app, config);
+    else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'slots')
+      await slotsView(app, config, parts[1], params.get('plan') ?? undefined);
+    else if (parts[0] === 'upload') await uploadView(app, config, parts[1]);
     else if (parts[0] === 'manage' && parts[1]) await manageView(app, config, parts[1]);
     else if (parts[0] === 'edit' && parts[1] && parts[2])
       await editView(app, config, parts[1], parts[2]);

@@ -59,6 +59,30 @@ beforeEach(() => {
 });
 
 describe('ingestBatch', () => {
+  it('keeps the order the manifest was written in, because clips are a sequence', async () => {
+    seedBatch(
+      manifest({
+        shorts: [
+          { file: 'part-1.mp4', title: 'Part one' },
+          { file: 'part-2.mp4', title: 'Part two' },
+          { file: 'part-3.mp4', title: 'Part three' },
+        ],
+      }),
+      ['part-1.mp4', 'part-2.mp4', 'part-3.mp4'],
+    );
+    const result = await ingestBatch(ingestDeps(), 'cc', BATCH);
+    expect(result.status).toBe('ingested');
+    const order = result.items.map((i) => {
+      const stored = ContentItem.parse(store.json(layout.contentItem('cc', i.id)));
+      return { title: stored.title, seq: stored.seq };
+    });
+    expect(order).toEqual([
+      { title: 'Part one', seq: 0 },
+      { title: 'Part two', seq: 1 },
+      { title: 'Part three', seq: 2 },
+    ]);
+  });
+
   it('records each Short, copies its media out of the inbox, and schedules nothing', async () => {
     seedBatch(
       manifest({

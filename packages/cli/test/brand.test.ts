@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { scoreSlots } from '@darkrelay/core';
+import { dayList, heatmapLines, hourList } from '../src/commands/plan';
 import { manyBrands, oneBrand } from '../src/brands';
 import { ShortsManifest } from '@darkrelay/core';
 import { buildOutlet, catalogEntries, iconKey, planMigration } from '../src/commands/brand';
@@ -157,5 +159,70 @@ describe('planBatch', () => {
     expect(() => planBatch(manifest([{ file: 'sub/a.mp4', title: 'A' }]), '/batch')).toThrow(
       /named without a path/,
     );
+  });
+});
+
+describe('plan flag lists', () => {
+  it('reads hours as a list or a range', () => {
+    expect(hourList('15,18,20')).toEqual([15, 18, 20]);
+    expect(hourList('9-12')).toEqual([9, 10, 11, 12]);
+    expect(hourList('18, 9-10, 18')).toEqual([9, 10, 18]);
+    expect(hourList(undefined)).toBeUndefined();
+  });
+
+  it('refuses an hour that is not one', () => {
+    expect(() => hourList('9,24')).toThrow(/not an hour of the day/);
+    expect(() => hourList('17-9')).toThrow(/17 is after 9/);
+  });
+
+  it('reads days by name or by number', () => {
+    expect(dayList('sat,sun')).toEqual([0, 6]);
+    expect(dayList('Monday,tue')).toEqual([1, 2]);
+    expect(dayList('0,6')).toEqual([0, 6]);
+    expect(dayList(undefined)).toBeUndefined();
+  });
+
+  it('refuses a day that is not one', () => {
+    expect(() => dayList('sat,funday')).toThrow(/"funday" is not a day/);
+    expect(() => dayList('7')).toThrow(/"7" is not a day/);
+  });
+});
+
+describe('heatmapLines', () => {
+  const scores = scoreSlots(
+    ['2026-10-03', '2026-10-10', '2026-10-17'].map((date) => ({
+      id: date,
+      publishedAt: `${date}T22:00:00Z`,
+      format: 'short' as const,
+      views72h: 3000,
+      watchSeconds72h: 45_000,
+      durationSeconds: 30,
+    })),
+    { now: new Date('2026-11-12T10:00:00Z') },
+  );
+
+  it('draws a row a day and a column an hour, with an hour ruler on top', () => {
+    const lines = heatmapLines(scores);
+    expect(lines).toHaveLength(9);
+    expect(lines[1]).toBe('     012345678901234567890123');
+    expect(lines.slice(2).map((l) => l.slice(0, 3))).toEqual([
+      'Sun',
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+    ]);
+  });
+
+  it('shades only the hours something was published in', () => {
+    const saturday = heatmapLines(scores).at(-1)!.slice(5);
+    // Saturday 18:00 is the only slot with history, so it is the only mark.
+    expect(saturday.replace(/ /g, '')).toBe('█');
+    expect(saturday.indexOf('█')).toBe(18);
+    // A week with no history at all is left entirely blank.
+    const empty = heatmapLines(scoreSlots([], { now: new Date('2026-11-12T10:00:00Z') }));
+    expect(empty.slice(2).every((l) => l.slice(5).trim() === '')).toBe(true);
   });
 });

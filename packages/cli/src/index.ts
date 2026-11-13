@@ -37,6 +37,13 @@ import {
   sweepShorts,
   uploadShortNow,
 } from './commands/shorts';
+import {
+  approveShortsPlan,
+  listShortsPlans,
+  planShorts,
+  showShortsPlan,
+  showSlots,
+} from './commands/plan';
 import { validate } from './commands/validate';
 import * as youtube from './commands/youtube';
 import { OUTLET_KINDS } from '@darkrelay/core';
@@ -264,6 +271,59 @@ shorts
   .command('upload <brand> <id>')
   .description('Upload one now, ahead of its slot')
   .action((brand, id, o) => uploadShortNow(brand, id, o, g()));
+const plan = shorts
+  .command('plan')
+  .description('Propose a schedule for the Shorts that have no slot yet')
+  .addHelpText(
+    'after',
+    `
+Slots are scored from this brand's own history: how videos published on each
+day and hour did in their first 72 hours, measured against the brand's median
+so one runaway hit cannot own a slot. Slots with no history fall back to a
+general peak-time prior, and a share of every plan is spent on untested slots
+on purpose, because that is the only way the scores improve.
+
+A plan writes nothing. Read it, then approve it:
+  darkrelay shorts plan chaoticcommits
+  darkrelay shorts plan approve chaoticcommits <planId>`,
+  );
+plan
+  .argument('[brand]', 'the brand to plan for')
+  .option('--outlet <id>', 'which YouTube outlet (default: the first one)')
+  .option('--weeks <n>', 'how many weeks to lay out (default 4)')
+  .option('--per-week <n>', 'releases per week (default 3)')
+  .option('--min-gap <hours>', 'hours between releases (default 20)')
+  .option('--hours <list>', 'only these hours, e.g. "15,18,20" or "9-17"')
+  .option('--days <list>', 'only these days, e.g. "sat,sun" or "0,6"')
+  .option('--explore <share>', 'share of slots spent on untested times (default 0.2)')
+  .option('--since <days>', 'ignore history older than this when scoring')
+  .option('--lead-days <n>', 'days between the upload and the slot (default 3)')
+  .option('--zone <iana>', "override the brand's timezone")
+  .option('--replan', 'also move content that already has a slot')
+  .option('--approve', 'approve it immediately instead of reviewing it first')
+  .action((brand, o) => {
+    if (!brand) throw new Error('Which brand? darkrelay shorts plan <brand>');
+    return planShorts(brand, o, g());
+  });
+plan
+  .command('approve <brand> <planId>')
+  .description('Take a plan: write its times onto the content (still uploads nothing)')
+  .action((brand, planId) => approveShortsPlan(brand, planId, g()));
+plan
+  .command('list <brand>')
+  .description("A brand's plans, newest first")
+  .action((brand) => listShortsPlans(brand, g()));
+plan
+  .command('show <brand> <planId>')
+  .description('Read a plan again')
+  .action((brand, planId) => showShortsPlan(brand, planId, g()));
+shorts
+  .command('slots <brand>')
+  .description('Which publish times have worked for a brand, as a week-long heatmap')
+  .option('--zone <iana>', "override the brand's timezone")
+  .option('--format <kind>', 'score only one format: short, long, live')
+  .option('--since <days>', 'ignore history older than this')
+  .action((brand, o) => showSlots(brand, o, g()));
 shorts
   .command('sweep')
   .description('Run the hourly pass now: upload what is due, move what changed')

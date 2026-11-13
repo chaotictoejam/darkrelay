@@ -47,8 +47,21 @@ export const DeploymentConfig = z.object({
        * default 10,000 daily quota units, so six is the ceiling.
        */
       dailyUploads: z.number().int().min(1).max(6).default(5),
+      /**
+       * The clock slot scoring and planning work in, as an IANA name. A
+       * brand may set its own; this is the deployment's default, because a
+       * good time to post is a fact about an audience, not about UTC.
+       */
+      timezone: z.string().min(1).default('America/New_York'),
+      /** Releases per week a plan lays out unless asked for otherwise. */
+      perWeek: z.number().int().min(1).max(21).default(3),
     })
-    .default({ leadDays: 3, dailyUploads: 5 }),
+    .default({
+      leadDays: 3,
+      dailyUploads: 5,
+      timezone: 'America/New_York',
+      perWeek: 3,
+    }),
   /** Fargate size for video transcoding. Bigger is faster; Spot price scales with it. */
   transcoder: z
     .object({
