@@ -295,6 +295,57 @@ describe('pullYouTube', () => {
     });
   });
 
+  it('records the release time a scheduled video is held for, not its upload time', async () => {
+    // The shape that showed scheduled videos as already out: uploaded days
+    // ago, so `publishedAt` is past, with the real release date in
+    // `status.publishAt`.
+    fake.uploads = [{ videoId: 'sched', title: 'Held back', publishedAt: '2026-10-09T22:13:05Z' }];
+    fake.details.set('sched', {
+      duration: 'PT58S',
+      title: 'Held back',
+      publishedAt: '2026-10-09T22:13:05Z',
+      privacyStatus: 'private',
+      scheduledAt: '2026-10-20T14:00:00Z',
+    });
+
+    await pullYouTube(deps(), RANGE, { listUploads: true });
+    expect(table.get(`S#cc|${metricKeys.videoMeta('sched')}`)).toMatchObject({
+      title: 'Held back',
+      publishedAt: '2026-10-09T22:13:05Z',
+      privacyStatus: 'private',
+      scheduledAt: '2026-10-20T14:00:00Z',
+    });
+  });
+
+  it('re-reads a video it knows is not public yet, without listing the channel', async () => {
+    fake.uploads = [{ videoId: 'sched', title: 'Held back', publishedAt: '2026-10-09T22:13:05Z' }];
+    fake.details.set('sched', {
+      duration: 'PT58S',
+      title: 'Held back',
+      publishedAt: '2026-10-09T22:13:05Z',
+      privacyStatus: 'private',
+      scheduledAt: '2026-10-20T14:00:00Z',
+    });
+    await pullYouTube(deps(), RANGE, { listUploads: true });
+
+    // It goes out. A nightly run lists no uploads and the video has no views,
+    // so only the stored row says to look at it again.
+    fake.uploads = [];
+    fake.details.set('sched', {
+      duration: 'PT58S',
+      title: 'Held back',
+      publishedAt: '2026-10-20T14:00:00Z',
+      privacyStatus: 'public',
+    });
+    await pullYouTube(deps(), RANGE);
+
+    const row = table.get(`S#cc|${metricKeys.videoMeta('sched')}`)!;
+    expect(row['privacyStatus']).toBe('public');
+    // The row is replaced whole, so the release time it has passed is gone
+    // rather than left to badge the video as scheduled forever.
+    expect(row['scheduledAt']).toBeUndefined();
+  });
+
   it('keeps going when one outlet cannot be reached', async () => {
     const run = await pullYouTube(
       deps({

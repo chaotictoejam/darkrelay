@@ -7,7 +7,7 @@ import {
   type ShowsResponse,
 } from './api';
 import { completeSignIn, currentToken, signIn, signOut, type RuntimeConfig } from './auth';
-import { shortDate } from './format';
+import { shortDate, slotTime } from './format';
 import { outletView, videoView } from './outlets';
 import {
   RANGES,
@@ -15,6 +15,8 @@ import {
   brandSwitcher,
   breakdowns,
   card,
+  countFormats,
+  countPending,
   crawlerNote,
   el,
   link,
@@ -27,9 +29,9 @@ import {
   stat,
   timeStat,
   trend,
-  videosTable,
+  videoCards,
 } from './ui';
-import { calendarView, slotsView } from './schedule';
+import { calendarView, pendingContent, slotsView } from './schedule';
 import { editView, manageView, uploadView } from './upload';
 
 const app = document.getElementById('app')!;
@@ -102,7 +104,10 @@ async function brandList(config: RuntimeConfig) {
 
 /** A brand page: every outlet summed, with its episodes and its videos. */
 async function brandView(config: RuntimeConfig, brand: string, days: number) {
-  const data = await get<ShowResponse>(config, `/brands/${brand}?${rangeQuery(days)}`);
+  const [data, scheduled] = await Promise.all([
+    get<ShowResponse>(config, `/brands/${brand}?${rangeQuery(days)}`),
+    pendingContent(config, brand),
+  ]);
   const heading = el('div', undefined, 'heading');
   const title = el('h1', data.title ?? brand);
   const name = el('div', undefined, 'brand-head');
@@ -131,7 +136,19 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
     ),
     stat('Episodes', data.episodes.length),
   );
-  if (data.videos?.length) stats.append(stat('Videos', data.videos.length));
+  const formats = countFormats(data.videos ?? []);
+  if (formats.long) stats.append(stat('Videos', formats.long));
+  if (formats.shorts) stats.append(stat('Shorts', formats.shorts));
+  // Counted from both sources: what DarkRelay scheduled, and what the
+  // channel is holding back whether DarkRelay scheduled it or not.
+  const pending = countPending(data.videos ?? [], scheduled);
+  if (pending.count) {
+    stats.append(
+      stat('Scheduled', pending.count, [
+        pending.next ? `Next: ${slotTime(pending.next)}` : undefined,
+      ]),
+    );
+  }
   if (data.totals.watchSeconds) stats.append(timeStat(data.totals.watchSeconds));
 
   const table = el('table', undefined, 'episodes');
@@ -166,7 +183,8 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
     outletsCard(data, brand),
     breakdowns(data),
   ];
-  if (data.episodes.length || !data.videos?.length) {
+  const videos = data.videos ?? [];
+  if (data.episodes.length || (!videos.length && !scheduled.length)) {
     sections.push(
       card(
         'Episodes',
@@ -175,15 +193,7 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
       ),
     );
   }
-  if (data.videos?.length) {
-    sections.push(
-      card(
-        'Videos and Shorts',
-        scroller(videosTable(brand, data.videos, days)),
-        'Content on a channel that is not an episode of the feed.',
-      ),
-    );
-  }
+  sections.push(...videoCards(brand, videos, days, scheduled));
   app.replaceChildren(...sections);
 }
 

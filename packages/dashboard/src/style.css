@@ -541,6 +541,30 @@ fieldset.field {
   color: var(--series-1);
   border-color: currentColor;
 }
+.badge.failed {
+  color: var(--danger);
+  border-color: currentColor;
+}
+/* Private or unlisted: out of sight, but not a date and not a failure. */
+.badge.held {
+  color: var(--text-muted);
+}
+/* A badge beside a title, not alone in a cell of its own. */
+td .badge {
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Not out yet: tinted so a table reads as coming-up above already-published. */
+tr.pending {
+  background: var(--series-1-wash);
+}
+tr.pending td:first-child {
+  border-left: 3px solid var(--series-1);
+}
+tr.pending.failed td:first-child {
+  border-left-color: var(--danger);
+}
 .confirm {
   color: var(--danger);
 }

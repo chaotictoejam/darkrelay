@@ -259,4 +259,16 @@ export interface VideoMetaItem {
   episodeId?: string;
   /** The episode a Short was clipped from, once Shorts carry one. */
   parentId?: string;
+  /**
+   * What the platform says about the video's visibility: `public`, `private`
+   * or `unlisted`. Absent on rows written before it was recorded.
+   */
+  privacyStatus?: string;
+  /**
+   * The release time the platform is holding it for, which exists only while
+   * it is scheduled and is **not** `publishedAt`: that is when it was
+   * uploaded. A video scheduled for next week was uploaded today, so reading
+   * `publishedAt` as the release date shows it as already out.
+   */
+  scheduledAt?: string;
 }

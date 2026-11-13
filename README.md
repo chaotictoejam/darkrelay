@@ -402,7 +402,7 @@ npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 
 
 ### What the dashboard shows
 
-A **brand switcher** with icons sits in the header whenever you can see more than one brand. A brand page sums every outlet and lists its episodes and its videos. A YouTube outlet has a page of its own: channel views per day, subscribers gained and lost, Shorts against long-form, and where the views came from. **Schedule** shows what is going out next, across every brand.
+A **brand switcher** with icons sits in the header whenever you can see more than one brand. A brand page sums every outlet and lists its episodes, its **Videos** and its **Shorts** — kept in separate sections, because a Short is found in a feed and a long video is chosen, so one table of both hides how either is doing. Anything that is not out yet is listed at the top of its section, badged _Scheduled_ with the date and time it goes live in your own time zone — whether DarkRelay scheduled it or you scheduled it in YouTube Studio, because the nightly run records the release time the platform is holding (`status.publishAt`) and not just the upload time. A video that is private or unlisted with no release time says that instead, and a failed upload says so with its reason. A YouTube outlet has a page of its own: channel views per day, subscribers gained and lost, Shorts against long-form, and where the views came from. **Schedule** shows what is going out next, across every brand.
 
 ### The schedule in the dashboard
 

@@ -21,11 +21,11 @@ import {
   rangeControl,
   rangeLabel,
   rangeQuery,
-  scroller,
   stat,
   trend,
-  videosTable,
+  videoCards,
 } from './ui';
+import { pendingContent } from './schedule';
 
 /**
  * One outlet's page. For a YouTube channel that means the channel's own
@@ -40,10 +40,10 @@ export async function outletView(
   outletId: string,
   days: number,
 ) {
-  const data = await get<OutletResponse>(
-    config,
-    `/brands/${brand}/outlets/${outletId}?${rangeQuery(days)}`,
-  );
+  const [data, scheduled] = await Promise.all([
+    get<OutletResponse>(config, `/brands/${brand}/outlets/${outletId}?${rangeQuery(days)}`),
+    pendingContent(config, brand, outletId),
+  ]);
   const back = link(`#/s/${brand}?days=${days}`, `← ${data.title}`);
   back.className = 'back';
 
@@ -115,20 +115,22 @@ export async function outletView(
     );
   }
 
-  sections.push(
-    card(
-      'Videos',
-      data.videos.length
-        ? scroller(videosTable(brand, data.videos, days))
-        : el(
-            'p',
-            'No videos recorded yet. Read the channel history with: darkrelay youtube backfill ' +
-              brand,
-            'muted',
-          ),
-      'Everything on this channel that is not an episode of the feed.',
-    ),
-  );
+  const cards = videoCards(brand, data.videos, days, scheduled);
+  if (cards.length) sections.push(...cards);
+  else {
+    sections.push(
+      card(
+        'Videos',
+        el(
+          'p',
+          'No videos recorded yet. Read the channel history with: darkrelay youtube backfill ' +
+            brand,
+          'muted',
+        ),
+        'Everything on this channel that is not an episode of the feed.',
+      ),
+    );
+  }
   app.replaceChildren(...sections);
 }
 

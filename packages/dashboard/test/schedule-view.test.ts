@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeConfig } from '../src/auth';
 import type { SchedulePlan, ScheduleResponse, SlotScore, SlotScoresResponse } from '../src/api';
+import { createElement, find, text, type Node } from './dom';
 
 /**
  * The schedule pages, actually run. The rest of the dashboard tests only
@@ -27,73 +28,6 @@ vi.mock('../src/api', () => ({
 }));
 
 const { calendarView, slotsView } = await import('../src/schedule');
-
-/**
- * Deliberately untyped: this stands in for a DOM element, and spelling out
- * the handful of properties the views touch would only be a second, weaker
- * copy of lib.dom.
- */
-type Node = any;
-
-/** Enough of an element for the view code: children, text, and tables. */
-function createElement(tag: string): Node {
-  const node: Node = {
-    tag,
-    children: [] as Node[],
-    _text: '',
-    className: '',
-    style: {},
-    attrs: {} as Record<string, string>,
-    append: (...kids: Node[]) => node.children.push(...kids),
-    prepend: (...kids: Node[]) => node.children.unshift(...kids),
-    replaceChildren: (...kids: Node[]) => {
-      node.children = kids;
-      node._text = '';
-    },
-    setAttribute: (k: string, v: string) => {
-      node.attrs[k] = v;
-    },
-    getAttribute: (k: string) => node.attrs[k],
-    addEventListener: (name: string, fn: () => void) => {
-      node.handlers = { ...(node.handlers ?? {}), [name]: fn };
-    },
-    classList: { add: () => {}, remove: () => {} },
-    createTHead: () => push(node, createElement('thead')),
-    createTBody: () => push(node, createElement('tbody')),
-    insertRow: () => push(node, createElement('tr')),
-    insertCell: () => push(node, createElement('td')),
-    get firstElementChild() {
-      return node.children[0];
-    },
-    get lastElementChild() {
-      return node.children[node.children.length - 1];
-    },
-  };
-  Object.defineProperty(node, 'textContent', {
-    get: () => node._text,
-    set: (value: string) => {
-      node._text = String(value ?? '');
-      node.children = [];
-    },
-  });
-  return node;
-}
-
-function push(parent: Node, child: Node): Node {
-  parent.children.push(child);
-  return child;
-}
-
-/** Every bit of text the tree would show, in order. */
-function text(node: Node): string {
-  return [node._text, ...node.children.map(text)].filter(Boolean).join(' ');
-}
-
-function find(node: Node, predicate: (n: Node) => boolean, out: Node[] = []): Node[] {
-  if (predicate(node)) out.push(node);
-  for (const child of node.children) find(child, predicate, out);
-  return out;
-}
 
 const config = { apiUrl: 'https://api.example', mediaUrl: 'https://cdn.example' } as RuntimeConfig;
 

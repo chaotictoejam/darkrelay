@@ -35,7 +35,14 @@ export class FakeYouTube {
   /** What `videoDetails` returns, keyed by video id. */
   details = new Map<
     string,
-    { duration?: string; privacyStatus?: string; title?: string; publishedAt?: string }
+    {
+      duration?: string;
+      privacyStatus?: string;
+      title?: string;
+      publishedAt?: string;
+      /** `status.publishAt`: the release time a scheduled video is held for. */
+      scheduledAt?: string;
+    }
   >();
   /** What the "audit" forces new videos to. */
   forcePrivate = false;
@@ -184,7 +191,7 @@ export class FakeYouTube {
               return {
                 id,
                 contentDetails: { duration: d.duration },
-                status: { privacyStatus: d.privacyStatus },
+                status: { privacyStatus: d.privacyStatus, publishAt: d.scheduledAt },
                 snippet: { title: d.title, publishedAt: d.publishedAt },
               };
             }),

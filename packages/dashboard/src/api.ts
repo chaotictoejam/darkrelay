@@ -48,8 +48,13 @@ export interface VideoSummary {
   videoId: string;
   outlet?: string;
   title: string;
+  /** When it was uploaded — not when a scheduled video goes live. */
   publishedAt: string;
   format: string;
+  /** `public`, `private` or `unlisted`, where the platform reports it. */
+  privacyStatus?: string;
+  /** The release time the platform is holding a scheduled video for. */
+  scheduledAt?: string;
   durationSeconds?: number;
   downloads7?: number;
   downloads30?: number;

@@ -12,7 +12,11 @@ import {
 } from './api';
 import type { RuntimeConfig } from './auth';
 import { brandIcon, card, el, link, scroller, stat } from './ui';
-import { compact, formatName } from './format';
+import { compact, formatName, stateNote } from './format';
+
+// `stateNote` reads the same words on a channel page as it does here, so it
+// lives in format.ts; re-exported because this is where it was first used.
+export { stateNote };
 
 /**
  * The schedule: what is going out, when, and why that time. The calendar is
@@ -60,6 +64,34 @@ export function heatGrid(scores: SlotScoresResponse): HeatCell[] {
     }
     return { ...slot, level: heatLevel(slot, max), label, title: `${label} — ${facts.join(', ')}` };
   });
+}
+
+/**
+ * A brand's content that has a slot and is not out yet, soonest first — what
+ * a channel page badges. The schedule lives behind its own route, so this is
+ * a second request; a channel page is worth reading without it, so a failure
+ * here costs the badges and nothing else.
+ */
+export async function pendingContent(
+  config: RuntimeConfig,
+  brand: string,
+  outlet?: string,
+): Promise<ScheduleEntry[]> {
+  try {
+    const data = await get<ScheduleResponse>(config, '/schedule');
+    return data.upcoming
+      .filter(
+        (e) =>
+          e.brand === brand &&
+          e.state !== 'published' &&
+          // An item recorded before outlets existed carries none, and a
+          // brand's own channel is where it would have gone.
+          (!outlet || !e.outlet || e.outlet === outlet),
+      )
+      .sort((a, b) => (a.publishAt ?? '').localeCompare(b.publishAt ?? ''));
+  } catch {
+    return [];
+  }
 }
 
 /** A day of the calendar, in the viewer's own time. */
@@ -113,22 +145,6 @@ export function dayLabel(iso: string, now = new Date()): string {
 
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-/** What an item's publication state means, said plainly. */
-export function stateNote(entry: ScheduleEntry): string {
-  switch (entry.state) {
-    case 'published':
-      return 'live';
-    case 'scheduled':
-      return 'uploaded, waiting for its time';
-    case 'uploading':
-      return 'uploading now';
-    case 'failed':
-      return `failed: ${entry.error ?? 'unknown error'}`;
-    default:
-      return 'not uploaded yet';
-  }
-}
 
 function entryRow(entry: ScheduleEntry) {
   const row = el('li', undefined, entry.state === 'failed' ? 'entry failed' : 'entry');

@@ -66,6 +66,10 @@ interface VideoFacts {
   title: string;
   publishedAt: string;
   durationSeconds?: number;
+  /** `public`, `private` or `unlisted`, as the platform reports it. */
+  privacyStatus?: string;
+  /** The release time YouTube is holding a scheduled video for. */
+  scheduledAt?: string;
 }
 
 /**
@@ -158,7 +162,14 @@ async function pullOutlet(
 
   const active = await listActiveVideos(report, range, log);
   const shorts = await listShorts(report, range, log);
-  const facts = await videoFacts(yt, brand, outlet, active, episodeByVideo, opts, log);
+  // A video YouTube is still holding — scheduled, private, unlisted — has no
+  // views, so it is never active and a nightly run would never look at it
+  // again. The few of them are re-read every night instead, so the dashboard
+  // stops calling something scheduled the moment it is out.
+  const held = opts.listUploads ? [] : await heldVideos(deps, brand, outlet);
+  if (held.length)
+    log('Re-reading videos not public yet', { brand: brand.slug, held: held.length });
+  const facts = await videoFacts(yt, brand, outlet, active, episodeByVideo, opts, log, held);
 
   const items: Record<string, unknown>[] = [];
   const touchedEpisodes: EpisodeManifest[] = [];
@@ -255,7 +266,7 @@ async function pullOutlet(
   // channel's content even where a video had no views in this range.
   for (const [videoId, fact] of facts) {
     if (episodeByVideo.has(videoId)) continue;
-    const known = opts.listUploads || touchedVideos.includes(videoId);
+    const known = opts.listUploads || touchedVideos.includes(videoId) || held.includes(videoId);
     if (!known) continue;
     const series = (await deps.series(metricKeys.videoSeries(brand.slug, videoId))).filter((i) =>
       i.sk.startsWith('D#'),
@@ -273,6 +284,11 @@ async function pullOutlet(
         creatorContentType: shorts.has(videoId) ? 'SHORTS' : undefined,
       }),
       durationSeconds: fact.durationSeconds,
+      // Both are written only when the platform reports them, and the row is
+      // replaced whole, so a video that goes public loses its release time
+      // rather than keeping a date it has already passed.
+      ...(fact.privacyStatus ? { privacyStatus: fact.privacyStatus } : {}),
+      ...(fact.scheduledAt ? { scheduledAt: fact.scheduledAt } : {}),
       ...windowTotals(fact.publishedAt || range.from, series),
       updatedAt,
     };
@@ -289,6 +305,29 @@ async function pullOutlet(
     videos: touchedVideos.length,
   });
   return touchedVideos.length;
+}
+
+/**
+ * The videos this outlet has already recorded as not public yet: scheduled,
+ * private or unlisted. Read from the summaries rather than from the channel,
+ * because listing a channel's uploads costs quota every night and the answer
+ * for all but a handful of videos is "public, as it was yesterday".
+ */
+async function heldVideos(
+  deps: YouTubeAnalyticsDeps,
+  brand: BrandConfig,
+  outlet: YouTubeOutlet,
+): Promise<string[]> {
+  const rows = (await deps.series(metricKeys.brandEpisodes(brand.slug))) as unknown as Record<
+    string,
+    unknown
+  >[];
+  return rows
+    .filter((r) => String(r['sk'] ?? '').startsWith('V#'))
+    .filter((r) => !r['outlet'] || r['outlet'] === outlet.id)
+    .filter((r) => r['scheduledAt'] || (r['privacyStatus'] && r['privacyStatus'] !== 'public'))
+    .map((r) => String(r['videoId'] ?? ''))
+    .filter(Boolean);
 }
 
 /**
@@ -338,9 +377,12 @@ async function videoFacts(
   episodeByVideo: Map<string, EpisodeManifest>,
   opts: PullOptions,
   log: YouTubeAnalyticsDeps['log'],
+  alsoWanted: string[] = [],
 ): Promise<Map<string, VideoFacts>> {
   const facts = new Map<string, VideoFacts>();
-  const wanted = new Set(active.map((a) => a.videoId).filter((id) => !episodeByVideo.has(id)));
+  const wanted = new Set(
+    [...active.map((a) => a.videoId), ...alsoWanted].filter((id) => !episodeByVideo.has(id)),
+  );
 
   if (opts.listUploads) {
     const channel = await yt.myChannel();
@@ -365,6 +407,8 @@ async function videoFacts(
       title: details.title ?? previous?.title ?? details.id,
       publishedAt: details.publishedAt ?? previous?.publishedAt ?? '',
       durationSeconds: parseIsoDuration(details.duration),
+      privacyStatus: details.privacyStatus,
+      scheduledAt: details.scheduledAt,
     });
   }
   return facts;

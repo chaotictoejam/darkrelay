@@ -17,6 +17,41 @@ export function shortDate(iso: string): string {
   });
 }
 
+/**
+ * "Nov 20, 6:00 PM" — a publish slot, in the reader's own time zone. A slot
+ * is a moment, not a day, so unlike `shortDate` it keeps the clock and is
+ * never forced into UTC: the person reading wants to know when they will be
+ * awake for it.
+ */
+export function slotTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** What an item's publication state means, said plainly. */
+export function stateNote(item: { state?: string; error?: string }): string {
+  switch (item.state) {
+    case 'published':
+      return 'live';
+    case 'scheduled':
+      return 'uploaded, waiting for its time';
+    case 'uploading':
+      return 'uploading now';
+    case 'failed':
+      return `failed: ${item.error ?? 'unknown error'}`;
+    case 'private':
+      return 'on the channel, not public and with no release time set';
+    case 'unlisted':
+      return 'unlisted: only people with the link can watch it';
+    default:
+      return 'not uploaded yet';
+  }
+}
+
 /** Every day from `from` to `to` inclusive, so missing days plot as zero. */
 export function daysBetween(from: string, to: string): string[] {
   const out: string[] = [];
