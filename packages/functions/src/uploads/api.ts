@@ -12,12 +12,10 @@ import {
   type EpisodeInputRaw,
 } from '@darkrelay/core';
 import { z } from 'zod';
+import { error, isResponse, parse, type ApiResponse } from '../lib/http';
 import type { Store } from '../lib/store';
 
-export interface ApiResponse {
-  statusCode: number;
-  body: unknown;
-}
+export type { ApiResponse };
 
 /** S3 multipart uploads, signed for the browser to send the bytes itself. */
 export interface Multipart {
@@ -59,12 +57,6 @@ const EPISODE_ID = /^[0-9a-f]{16}$/;
 /** The publisher's own files; a browser upload must never write them. */
 const RESERVED = new Set(['episode.json', PROCESSED_FILE]);
 
-const error = (statusCode: number, message: string | string[]): ApiResponse => ({
-  statusCode,
-  body: Array.isArray(message)
-    ? { error: message.join('\n'), errors: message }
-    : { error: message },
-});
 const FORBIDDEN = error(403, "You can't upload to this show");
 
 export function partSize(bytes: number): number {
@@ -119,18 +111,6 @@ const CompleteBody = z.object({
   episodeType: z.enum(['full', 'trailer', 'bonus']).optional(),
   explicit: z.boolean().optional(),
 });
-
-function parse<T>(schema: z.ZodType<T>, body: unknown): T | ApiResponse {
-  const r = schema.safeParse(body);
-  return r.success
-    ? r.data
-    : error(
-        400,
-        r.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
-      );
-}
-const isResponse = (v: unknown): v is ApiResponse =>
-  typeof v === 'object' && v !== null && 'statusCode' in v;
 
 /** A bundle file the dashboard may write: a known role, never the publisher's own files. */
 function badName(name: string): string | undefined {

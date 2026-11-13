@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
 import {
+  BRAND_ICON_CACHE_CONTROL,
   BrandConfig,
   DEFAULT_RSS_OUTLET_ID,
   DEFAULT_YOUTUBE_OUTLET_ID,
@@ -9,11 +8,13 @@ import {
   Outlet,
   SLUG,
   brandFromShow,
+  brandIconKey,
   catalogSlug,
   checkIconImage,
-  contentTypeFor,
   feedShow,
   feedUrl,
+  iconContentType,
+  imageSize,
   layout,
   outletName,
   outletSource,
@@ -104,13 +105,6 @@ export function planMigration(
     else plan.create.push(entry.slug);
   }
   return plan;
-}
-
-/** Content-addressed icon key, so a replaced icon is never served from cache. */
-export function iconKey(slug: string, bytes: Uint8Array, file: string): string {
-  const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
-  const ext = extname(file).toLowerCase().replace(/^\./, '');
-  return layout.brandIcon(slug, hash, ext === 'jpeg' ? 'jpg' : ext);
 }
 
 export interface OutletFlags {
@@ -222,8 +216,9 @@ async function uploadIcon(bucket: Bucket, slug: string, file: string) {
   const bytes = await readFile(file);
   const problems = checkIconImage(bytes, file);
   if (problems.length) throw new Error(problems.join('\n'));
-  const key = iconKey(slug, bytes, file);
-  await bucket.uploadFile(publicKey(key), file, contentTypeFor(file), 'public, max-age=86400');
+  const type = imageSize(bytes)!.type;
+  const key = brandIconKey(slug, bytes, type);
+  await bucket.uploadFile(publicKey(key), file, iconContentType(type), BRAND_ICON_CACHE_CONTROL);
   return { key };
 }
 

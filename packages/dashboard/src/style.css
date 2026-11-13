@@ -606,6 +606,57 @@ tr.pending.failed td:first-child {
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
+/* The icon doubles as the file picker for anyone who may upload. */
+.brand-icon-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.icon-pick {
+  position: relative;
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.icon-pick:focus-within {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+.icon-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.icon-pick:hover .icon-overlay,
+.icon-pick:focus-within .icon-overlay {
+  opacity: 1;
+}
+/* Kept in the layout, and reachable by keyboard, but never drawn. */
+.icon-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.icon-status {
+  margin: 0;
+  font-size: 0.75rem;
+  white-space: pre-line;
+}
+
 .brand-head {
   display: flex;
   align-items: center;

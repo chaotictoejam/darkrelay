@@ -20,7 +20,7 @@ import {
   custom_resources as cr,
 } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
-import { ADMIN_GROUP } from '@darkrelay/core';
+import { ADMIN_GROUP, metricKeys } from '@darkrelay/core';
 import type { DeploymentConfig } from '../config';
 import { REPO_ROOT, nodeFunction } from '../lambda';
 
@@ -130,6 +130,41 @@ export class DashboardStack extends Stack {
       new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [mediaBucket.bucketArn] }),
     );
 
+    // Brand writes: the icon today. Reads stay with the analytics function,
+    // which never touches S3; this one holds only what changing brand.json
+    // needs, so a dashboard read can't reach the catalog.
+    const brandWrites = nodeFunction(this, 'BrandWrites', {
+      entry: 'brands/handler.ts',
+      memorySize: 256,
+      timeout: Duration.seconds(15),
+      environment: {
+        BUCKET_NAME: mediaBucket.bucketName,
+        TABLE_NAME: table.tableName,
+        PUBLIC_BASE_URL: props.publicBaseUrl,
+      },
+    });
+    mediaBucket.grantRead(brandWrites, 'catalog/*/brand.json');
+    mediaBucket.grantRead(brandWrites, 'catalog/*/show.json');
+    mediaBucket.grantPut(brandWrites, 'catalog/*/brand.json');
+    // Icons are the only public object this function writes, and they are
+    // content-addressed, so it can never overwrite a feed or an episode file.
+    mediaBucket.grantPut(brandWrites, 'public/*/icon-*');
+    brandWrites.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [mediaBucket.bucketArn] }),
+    );
+    // The brand rows only: every one of them shares a partition key, so the
+    // row a brand change writes is the only kind of item this function can
+    // touch. Numbers are written by the ingestion runs, nothing else.
+    brandWrites.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:PutItem'],
+        resources: [table.tableArn],
+        conditions: {
+          'ForAllValues:StringEquals': { 'dynamodb:LeadingKeys': [metricKeys.brandsPk] },
+        },
+      }),
+    );
+
     const allowedOrigins = [siteUrl, 'http://localhost:5173'];
     // The browser PUTs parts to presigned URLs and needs each part's ETag back.
     // Set from here because the bucket's stack can't know the dashboard URL.
@@ -236,6 +271,18 @@ export class DashboardStack extends Stack {
       ['/shows/{show}/catalog/{episodeId}', apigw.HttpMethod.GET],
     ] as const) {
       api.addRoutes({ path, methods: [method], integration: upload, authorizer });
+    }
+
+    // Changing a brand's icon: `uploader` for that brand, checked in the
+    // router. `/shows/...` is the same route under the older name.
+    const brandWrite = new integrations.HttpLambdaIntegration('BrandWrite', brandWrites);
+    for (const path of ['/brands/{brand}/icon', '/shows/{brand}/icon']) {
+      api.addRoutes({
+        path,
+        methods: [apigw.HttpMethod.POST],
+        integration: brandWrite,
+        authorizer,
+      });
     }
 
     const runtimeConfig = {

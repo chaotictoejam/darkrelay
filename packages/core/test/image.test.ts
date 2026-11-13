@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ICON_MAX_BYTES, checkIconImage, imageSize } from '../src';
+import { ICON_MAX_BYTES, brandIconKey, checkIconImage, imageSize } from '../src';
 
 function png(width: number, height: number): Uint8Array {
   const b = new Uint8Array(24);
@@ -74,5 +74,18 @@ describe('checkIconImage', () => {
     expect(checkIconImage(new Uint8Array([1, 2, 3]), 'icon.svg')).toEqual([
       'icon.svg is not a readable JPEG or PNG',
     ]);
+  });
+});
+
+describe('brandIconKey', () => {
+  it('addresses the icon by its content, so a replacement is never cached', () => {
+    const a = brandIconKey('cc', new Uint8Array([1, 2, 3]), 'png');
+    const b = brandIconKey('cc', new Uint8Array([4, 5, 6]), 'png');
+    expect(a).toMatch(/^cc\/icon-[0-9a-f]{8}\.png$/);
+    expect(a).not.toBe(b);
+  });
+
+  it('names the file after the bytes, not after what the upload was called', () => {
+    expect(brandIconKey('cc', new Uint8Array([1]), 'jpeg')).toMatch(/\.jpg$/);
   });
 });

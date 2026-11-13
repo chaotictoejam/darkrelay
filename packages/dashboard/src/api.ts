@@ -106,6 +106,13 @@ export interface BrandSummary {
   outlets?: Outlet[];
 }
 
+/** Where a brand's new icon landed, after the API stored it. */
+export interface BrandIconResponse {
+  brand: string;
+  iconKey: string;
+  iconUrl?: string;
+}
+
 export interface ShowsResponse {
   shows: BrandSummary[];
   brands?: BrandSummary[];

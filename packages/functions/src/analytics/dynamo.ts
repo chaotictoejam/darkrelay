@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
+  PutCommand,
   QueryCommand,
   type QueryCommandInput,
 } from '@aws-sdk/lib-dynamodb';
@@ -9,6 +10,11 @@ import {
 export const doc = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
+
+/** One item, for a write that is not part of an ingestion run. */
+export async function putItem(table: string, item: Record<string, unknown>) {
+  await doc.send(new PutCommand({ TableName: table, Item: item }));
+}
 
 export async function putAll(table: string, items: Record<string, unknown>[]) {
   for (let i = 0; i < items.length; i += 25) {

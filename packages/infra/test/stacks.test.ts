@@ -11,6 +11,12 @@ import { tagDeployment } from '../lib/tags';
 
 const env = { account: '123456789012', region: 'us-east-1' };
 
+/** As much of an IAM statement as the policy assertions below read. */
+interface Statement {
+  Action: string | string[];
+  Resource?: unknown;
+}
+
 function synth(input: DeploymentConfigInput) {
   const config = DeploymentConfig.parse(input);
   const app = new App();
@@ -346,11 +352,42 @@ describe('analytics', () => {
 });
 
 describe('dashboard', () => {
+  /** The statements of one function's policies, by its role's logical id. */
+  const statementsOf = (prefix: string) =>
+    Object.entries(t.dashboard.findResources('AWS::IAM::Policy'))
+      .filter(([id]) => id.startsWith(prefix))
+      .flatMap(([, policy]) => policy['Properties'].PolicyDocument.Statement as Statement[]);
+
+  const policiesOf = (prefix: string) => JSON.stringify(statementsOf(prefix));
+
   it('never lets the dashboard API touch Athena or Glue', () => {
     const policies = JSON.stringify(t.dashboard.findResources('AWS::IAM::Policy'));
     expect(policies).not.toMatch(/athena:|glue:/);
     expect(policies).toMatch(/dynamodb:Query/);
-    expect(policies).not.toMatch(/dynamodb:PutItem|dynamodb:BatchWriteItem/);
+    // The function the dashboard reads through can only read: numbers are
+    // written by the ingestion runs, and brand rows by the brand writer.
+    expect(policiesOf('ApiServiceRole')).not.toMatch(
+      /dynamodb:PutItem|dynamodb:BatchWriteItem|s3:PutObject/,
+    );
+  });
+
+  it('lets a brand change write brand rows, brand configs and icons, nothing else', () => {
+    const policies = policiesOf('BrandWritesServiceRole');
+    expect(policies).toMatch(/dynamodb:PutItem/);
+    // Every brand row shares one partition key, so no other item can be
+    // written — a brand change can never touch a day's numbers.
+    expect(policies).toMatch(/dynamodb:LeadingKeys/);
+    expect(policies).not.toMatch(/dynamodb:BatchWriteItem|dynamodb:DeleteItem/);
+    expect(policies).not.toMatch(/athena:|glue:/);
+
+    // The only two keys it may write: the brand's config, and an icon. The
+    // feed config it reads to derive an unmigrated brand is not among them,
+    // so a brand change can never touch a feed or an episode.
+    const writes = statementsOf('BrandWritesServiceRole').filter((statement) =>
+      [statement.Action].flat().some((action: string) => action.startsWith('s3:Put')),
+    );
+    const keys = JSON.stringify(writes).match(/\/(catalog|public|inbox)[^"]*/g);
+    expect(new Set(keys)).toEqual(new Set(['/catalog/*/brand.json', '/public/*/icon-*']));
   });
 
   it('requires Cognito sign-in on every route, with no self sign-up', () => {
@@ -372,8 +409,10 @@ describe('dashboard', () => {
       'GET /shows/{show}/catalog',
       'GET /shows/{show}/catalog/{episodeId}',
       'GET /shows/{show}/uploads/{bundleId}',
+      'POST /brands/{brand}/icon',
       'POST /schedule/{brand}/plans',
       'POST /schedule/{brand}/plans/{planId}/approve',
+      'POST /shows/{brand}/icon',
       'POST /shows/{show}/uploads',
       'POST /shows/{show}/uploads/{bundleId}/{action}',
     ]);
