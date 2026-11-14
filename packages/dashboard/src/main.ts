@@ -1,4 +1,5 @@
 import {
+  canManage,
   get,
   type BrandSummary,
   type EpisodeResponse,
@@ -121,21 +122,24 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
   heading.append(name);
   me(config)
     .then((roles) => {
-      if (!roles.upload.some((s) => s.show === brand)) return;
-      // An uploader can replace the icon from here; the icon itself is the picker.
-      name.replaceChildren(
-        iconEditor(
-          config,
-          { ...data, show: brand },
-          {
-            onUpdated: () => {
-              forgetBrands();
-              renderSwitcher(config, brand).catch(() => {});
+      // The icon belongs to the brand, so it follows `manage`: a brand with
+      // no feed has no episodes to upload and its icon is still its own.
+      if (canManage(roles, brand)) {
+        name.replaceChildren(
+          iconEditor(
+            config,
+            { ...data, show: brand },
+            {
+              onUpdated: () => {
+                forgetBrands();
+                renderSwitcher(config, brand).catch(() => {});
+              },
             },
-          },
-        ),
-        title,
-      );
+          ),
+          title,
+        );
+      }
+      if (!roles.upload.some((s) => s.show === brand)) return;
       const actions = el('div', undefined, 'actions');
       const manage = link(`#/manage/${brand}`, 'Manage episodes');
       manage.className = 'button secondary';

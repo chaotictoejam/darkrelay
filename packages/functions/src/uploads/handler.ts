@@ -53,7 +53,7 @@ const deps: UploadDeps = {
       );
     },
   },
-  async listShows() {
+  async listCatalog() {
     const r = await s3.send(
       new ListObjectsV2Command({ Bucket: bucket, Prefix: 'catalog/', Delimiter: '/' }),
     );

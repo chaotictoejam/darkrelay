@@ -31,8 +31,12 @@ export interface Multipart {
 export interface UploadDeps {
   store: Pick<Store, 'getText' | 'head' | 'list' | 'createIfAbsent'>;
   multipart: Multipart;
-  /** Show slugs under catalog/. */
-  listShows(): Promise<string[]>;
+  /**
+   * Every slug under `catalog/`: brands, whether or not they have a feed.
+   * A YouTube-only brand has no show.json, so it is in here and not in the
+   * list of shows an episode can be uploaded to.
+   */
+  listCatalog(): Promise<string[]>;
   newBundleId(): string;
   newGuid(): string;
   now(): Date;
@@ -159,9 +163,16 @@ export async function route(deps: UploadDeps, req: UploadRequest): Promise<ApiRe
   return error(404, 'Not found');
 }
 
-/** What the signed-in user may do, so the dashboard knows what to offer. */
+/**
+ * What the signed-in user may do, so the dashboard knows what to offer.
+ *
+ * `upload` is where an episode can go, so it is the shows with a feed.
+ * `manage` is the brands themselves — a YouTube-only brand has no feed to
+ * upload an episode to, and its name and icon are still its owner's to
+ * change, so the two lists are not the same.
+ */
 async function me(deps: UploadDeps, access: Access): Promise<ApiResponse> {
-  const slugs = access.admin ? await deps.listShows() : [...access.upload].sort();
+  const slugs = access.admin ? await deps.listCatalog() : [...access.upload].sort();
   const upload = (
     await Promise.all(
       slugs.map(async (show) => {
@@ -179,7 +190,12 @@ async function me(deps: UploadDeps, access: Access): Promise<ApiResponse> {
   ).filter((s) => s !== undefined);
   return {
     statusCode: 200,
-    body: { admin: access.admin, view: access.admin ? null : [...access.view].sort(), upload },
+    body: {
+      admin: access.admin,
+      view: access.admin ? null : [...access.view].sort(),
+      upload,
+      manage: slugs,
+    },
   };
 }
 
