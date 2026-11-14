@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/chaotictoejam/darkrelay/security/advisories/new
+    about: Report security issues privately, not as a public issue.
+  - name: Docs
+    url: https://darkrelay.chaotictoejam.com
+    about: Guides for migrating a show, connecting YouTube and running analytics.

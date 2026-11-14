@@ -1,10 +1,28 @@
 # DarkRelay
 
+[![CI](https://github.com/chaotictoejam/darkrelay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chaotictoejam/darkrelay/actions/workflows/ci.yml) [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 Self-hosted, serverless podcast hosting and analytics on AWS. It is the publishing half of [Darkroom](https://github.com/chaotictoejam/darkroom): Darkroom records, edits and exports; DarkRelay publishes and measures.
 
 One upload in. An RSS feed (iTunes and Podcasting 2.0 tags) out, served from your own AWS account, with your own download logs.
 
 **Status:** hosting, feeds, import and migration, download analytics, the dashboard, video and YouTube are all built. DarkRelay is now organised around [brands and outlets](#brands-and-outlets): not every brand is a podcast. See [Roadmap](#roadmap).
+
+## Quickstart
+
+About **$1-4 a month** at personal scale ([cost breakdown](#cost)). You need Node 22+, Docker or Podman (for the transcoder image), AWS credentials, and the account [bootstrapped for CDK](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html) in us-east-1.
+
+```bash
+git clone https://github.com/chaotictoejam/darkrelay && cd darkrelay
+npm install
+cp darkrelay.config.example.json darkrelay.config.json   # set your domain, or leave it out
+npm run deploy
+npx darkrelay show put my-show.json --image cover.jpg     # start from examples/show.example.json
+npx darkrelay show go-live my-show                       # new shows start as drafts
+npx darkrelay publish "Episode 1.mp3" --show my-show --title "Episode 1" --notes notes.html
+```
+
+Moving an existing show? Start with [Moving a show from another host](#moving-a-show-from-another-host). Full details are under [Deploy](#deploy) and [Use](#use).
 
 ## How it works
 
@@ -540,3 +558,11 @@ npm run synth        # needs darkrelay.config.json (or DARKRELAY_CONFIG=path)
 Further out:
 
 - **Video feed for Apple Podcasts.** Apple's HLS video is only open to partner hosts through a private API, and Apple ignores `podcast:alternateEnclosure`. Self-hosted video can reach Apple Podcasts only as a separate video-only feed with MP4 enclosures (a second listing, like This Week in Tech). This would need an MP4 rendition from the transcoder and a second feed per show.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache License 2.0](LICENSE). Copyright 2026 Joanne Skiles.
