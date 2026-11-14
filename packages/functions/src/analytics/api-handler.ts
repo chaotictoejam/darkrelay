@@ -45,7 +45,11 @@ export async function handler(
   const res = await route(query, event.rawPath, event.queryStringParameters ?? {}, access);
   return {
     statusCode: res.statusCode,
-    headers: { 'content-type': 'application/json', 'cache-control': 'private, max-age=60' },
+    // Not cached. These reads are small pre-aggregated queries, so a minute
+    // of browser caching saved very little and cost correctness: a brand
+    // whose icon or name was just changed came back from the cache with the
+    // old one, and a refresh looked as though the change had been lost.
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
     body: JSON.stringify(res.body),
   };
 }
