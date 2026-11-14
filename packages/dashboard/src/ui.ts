@@ -1,4 +1,4 @@
-import type { BrandSummary, ScheduleEntry, SeriesResponse } from './api';
+import type { BrandSummary, ScheduleEntry, SeriesResponse, ShowResponse } from './api';
 import type { RuntimeConfig } from './auth';
 import { barList, lineChart } from './charts';
 import {
@@ -8,7 +8,10 @@ import {
   duration,
   fillDays,
   formatName,
+  outletLabel,
+  playsWord,
   podcastApps,
+  recordedTo,
   shortDate,
   slotTime,
   stateNote,
@@ -153,7 +156,8 @@ export function brandSwitcher(config: RuntimeConfig, brands: BrandSummary[], cur
 
 export function trend(data: SeriesResponse, notBefore?: string) {
   const from = notBefore && notBefore > data.from ? notBefore : data.from;
-  const days = fillDays(data.daily, from, data.to, (date) => ({
+  // Today has not been counted yet, so the line ends on the last day that was.
+  const days = fillDays(data.daily, from, recordedTo(data.daily, data.to, from), (date) => ({
     date,
     downloads: 0,
     serverDownloads: 0,
@@ -166,6 +170,15 @@ export function trend(data: SeriesResponse, notBefore?: string) {
     ),
     'Podcast app downloads (unique per listener per day, over one minute, no bots) plus YouTube views.',
   );
+}
+
+/**
+ * Outlets with a page of their own: a channel, and a podcast feed. A
+ * platform DarkRelay only has a CSV export for has nothing to show beyond
+ * the row it is already on.
+ */
+export function hasOutletPage(kind: string): boolean {
+  return kind === 'youtube' || kind === 'rss';
 }
 
 /**
@@ -183,8 +196,8 @@ export function outletsCard(data: SeriesResponse, brand?: string) {
   for (const row of rows) {
     const tr = body.insertRow();
     const first = tr.insertCell();
-    // A channel has a page of its own; a feed's numbers are the brand page.
-    if (brand && row.kind === 'youtube') first.append(link(`#/s/${brand}/o/${row.id}`, row.name));
+    // A channel and a feed each have a page of their own.
+    if (brand && hasOutletPage(row.kind)) first.append(link(`#/s/${brand}/o/${row.id}`, row.name));
     else first.textContent = row.name;
     const cells = [
       row.plays.toLocaleString('en-US'),
@@ -204,12 +217,19 @@ export function outletsCard(data: SeriesResponse, brand?: string) {
   );
 }
 
-export function breakdowns(data: SeriesResponse) {
+/**
+ * Who downloaded it and from where. Every one of these three is counted from
+ * podcast download logs — YouTube reports no country, device or app — so
+ * they belong to a podcast outlet, not to a brand that has both.
+ *
+ * `apps` names one outlet's own apps, where the page is about one outlet.
+ */
+export function breakdowns(data: SeriesResponse, apps?: Record<string, number>) {
   const grid = el('div', undefined, 'grid');
   grid.append(
     card(
       'Podcast apps',
-      barList(topEntries(podcastApps(data.bySource ?? [])), 'Downloads by podcast app'),
+      barList(topEntries(apps ?? podcastApps(data.bySource ?? [])), 'Downloads by podcast app'),
     ),
     card(
       'Countries',
@@ -437,28 +457,297 @@ export function videoCards(
     );
 }
 
+/** One thing that has not gone out yet, from either side of the fence. */
+export interface UpcomingItem {
+  title: string;
+  /** `short` or `video`, as the calendar words it. */
+  kind: string;
+  state: string;
+  publishAt?: string;
+  error?: string;
+  /** Set once the platform has the bytes. */
+  videoId?: string;
+}
+
 /**
- * What a channel has coming: content with a slot, plus recorded videos the
- * platform has not made public yet. The stats row says this so a page
- * answers "what is next" without scrolling to find out.
+ * A brand's schedule in numbers. `count` is the headline, and it is only
+ * what is genuinely still ahead: a slot in the future that has not failed.
+ * Everything else is counted apart rather than folded in, because a private
+ * video with no release time, a slot that passed yesterday and a failed
+ * upload are each a different problem and none of them is "scheduled".
  */
-export function countPending(
+export interface ScheduledSummary {
+  /** Items whose slot is still ahead: what the box counts. */
+  count: number;
+  /** The soonest slot ahead. */
+  next?: string;
+  /** Those items, soonest first. */
+  items: UpcomingItem[];
+  /** On the channel, not public, with no release time: private or unlisted. */
+  held: number;
+  /** Uploads that failed; they are going nowhere until someone looks. */
+  failed: number;
+  /** Planned, with nobody having chosen a time yet. */
+  awaitingSlot: number;
+  /** A slot that has passed with the item still not public. */
+  overdue: number;
+}
+
+export type ScheduleBucket = 'ahead' | 'overdue' | 'held' | 'failed' | 'awaiting';
+
+/** States that mean "on the channel, out of sight" rather than "coming". */
+const HELD_STATES = new Set(['private', 'unlisted']);
+
+/**
+ * Which of those five an item is. The clock decides, not the word: an item
+ * marked `scheduled` whose time was yesterday is not scheduled any more.
+ */
+export function scheduleBucket(
+  item: { state?: string; publishAt?: string },
+  now = new Date(),
+): ScheduleBucket {
+  if (item.state === 'failed') return 'failed';
+  if (!item.publishAt) return HELD_STATES.has(item.state ?? '') ? 'held' : 'awaiting';
+  return Date.parse(item.publishAt) > now.getTime() ? 'ahead' : 'overdue';
+}
+
+/**
+ * What a brand has coming, counted from both sides: content DarkRelay
+ * scheduled, and videos the channel is holding whether DarkRelay scheduled
+ * them or not. An item recorded on both sides is counted once, with the
+ * content store's answer preferred because it knows why.
+ */
+export function countScheduled(
   videos: VideoRow[],
   scheduled: ScheduleEntry[] = [],
   now = new Date(),
-): { count: number; next?: string } {
+): ScheduledSummary {
   const recorded = new Set(videos.map((v) => v.videoId));
-  const fromContent = scheduled.filter(
-    (e) => e.state !== 'published' && !(e.externalId && recorded.has(e.externalId)),
+  const waiting = new Map(
+    scheduled
+      .filter((e) => e.state !== 'published' && e.externalId && recorded.has(e.externalId))
+      .map((e) => [e.externalId!, e]),
   );
-  const fromChannel = videos
-    .map((v) => pendingFor(v, undefined, now))
-    .filter((p): p is NonNullable<typeof p> => Boolean(p));
-  const dates = [...fromContent, ...fromChannel]
-    .map((p) => p.publishAt)
-    .filter((d): d is string => Boolean(d))
-    .sort();
-  return { count: fromContent.length + fromChannel.length, next: dates[0] };
+  const candidates: UpcomingItem[] = [];
+  for (const e of scheduled) {
+    // A published item is out, and one with a video of its own is counted
+    // with that video rather than twice.
+    if (e.state === 'published') continue;
+    if (e.externalId && recorded.has(e.externalId)) continue;
+    candidates.push({
+      title: e.title,
+      kind: e.kind === 'short' ? 'short' : 'video',
+      state: e.state ?? 'planned',
+      publishAt: e.publishAt,
+      error: e.error,
+      videoId: e.externalId,
+    });
+  }
+  for (const v of videos) {
+    const pending = pendingFor(v, waiting, now);
+    if (!pending) continue;
+    candidates.push({
+      title: v.title,
+      kind: v.format === 'short' ? 'short' : 'video',
+      state: pending.state ?? 'scheduled',
+      publishAt: pending.publishAt,
+      error: pending.error,
+      videoId: v.videoId,
+    });
+  }
+
+  const summary: ScheduledSummary = {
+    count: 0,
+    items: [],
+    held: 0,
+    failed: 0,
+    awaitingSlot: 0,
+    overdue: 0,
+  };
+  const ahead: UpcomingItem[] = [];
+  for (const item of candidates) {
+    switch (scheduleBucket(item, now)) {
+      case 'ahead':
+        ahead.push(item);
+        break;
+      case 'held':
+        summary.held++;
+        break;
+      case 'failed':
+        summary.failed++;
+        break;
+      case 'awaiting':
+        summary.awaitingSlot++;
+        break;
+      case 'overdue':
+        summary.overdue++;
+        break;
+    }
+  }
+  ahead.sort((a, b) => (a.publishAt ?? '').localeCompare(b.publishAt ?? ''));
+  summary.count = ahead.length;
+  summary.items = ahead;
+  summary.next = ahead[0]?.publishAt;
+  return summary;
+}
+
+/** The lines under the count: everything that is not going out on a clock. */
+export function scheduleNotes(summary: ScheduledSummary): string[] {
+  const notes: string[] = [];
+  if (summary.awaitingSlot) notes.push(`${summary.awaitingSlot} waiting for a slot`);
+  if (summary.overdue) notes.push(`${summary.overdue} past its slot and still not public`);
+  if (summary.held) notes.push(`${summary.held} private or unlisted, with no release time`);
+  if (summary.failed) notes.push(`${summary.failed} failed to upload`);
+  return notes;
+}
+
+/**
+ * The schedule box: how many are genuinely coming, when the next one is, and
+ * the few after it. What is not coming — held, failed, slotless, overdue —
+ * is said underneath rather than counted, so the number can be trusted.
+ */
+export function scheduledCard(summary: ScheduledSummary, limit = 5): HTMLElement {
+  const body = el('div', undefined, 'sched');
+  const head = el('div', undefined, 'sched-head');
+  head.append(el('span', String(summary.count), 'stat-value'));
+  head.append(
+    el(
+      'span',
+      summary.next
+        ? `going out · next ${slotTime(summary.next)}`
+        : 'nothing with a time ahead of it',
+      'muted',
+    ),
+  );
+  body.append(head);
+
+  if (summary.items.length) {
+    const list = el('ul', undefined, 'entries');
+    for (const item of summary.items.slice(0, limit)) {
+      const row = el('li', undefined, 'entry');
+      row.append(el('span', slotTime(item.publishAt!), 'entry-time'));
+      const detail = el('div', undefined, 'entry-body');
+      const title = el('div', undefined, 'entry-title');
+      title.append(el('span', item.title), el('span', formatName(item.kind), 'tag'));
+      detail.append(title, el('div', stateNote(item), 'muted'));
+      row.append(detail);
+      list.append(row);
+    }
+    body.append(list);
+    const rest = summary.items.length - limit;
+    if (rest > 0) body.append(el('p', `and ${rest} more`, 'muted'));
+  }
+
+  const notes = scheduleNotes(summary);
+  if (notes.length) body.append(el('p', `Not counted here: ${notes.join(' · ')}.`, 'muted'));
+
+  const actions = el('div', undefined, 'actions');
+  const open = link('#/schedule', 'Open the schedule');
+  open.className = 'button secondary';
+  actions.append(open);
+  body.append(actions);
+  return card(
+    'Scheduled',
+    body,
+    'Videos and Shorts whose time is still ahead. An episode release is kept by the feed, not here.',
+  );
+}
+
+/** One outlet as the summary counts it: what it is, and how it did. */
+export interface OutletRow {
+  id: string;
+  kind: string;
+  name: string;
+  plays: number;
+  watchSeconds: number;
+}
+
+/**
+ * Every outlet the brand has, whether or not it was played in this range.
+ * The brand row names them; the totals only know the ones with numbers, and
+ * a channel with a quiet 7 days is still a channel.
+ */
+export function outletRows(data: ShowResponse): OutletRow[] {
+  const byId = new Map<string, OutletRow>();
+  for (const o of data.outlets ?? []) {
+    byId.set(o.id, { id: o.id, kind: o.kind, name: o.name, plays: 0, watchSeconds: 0 });
+  }
+  for (const t of data.byOutlet ?? []) {
+    const known = byId.get(t.id);
+    if (known) {
+      known.plays = t.plays;
+      known.watchSeconds = t.watchSeconds;
+    } else {
+      byId.set(t.id, {
+        id: t.id,
+        kind: t.kind,
+        name: t.name,
+        plays: t.plays,
+        watchSeconds: t.watchSeconds,
+      });
+    }
+  }
+  return [...byId.values()].sort((a, b) => b.plays - a.plays || a.name.localeCompare(b.name));
+}
+
+/**
+ * Which videos belong to a channel. A video recorded before outlets existed
+ * carries no outlet, and belongs to the only channel there is; where there
+ * are two, a video has to say which.
+ */
+function videosFor(videos: VideoRow[], outletId: string, channels: string[]) {
+  return videos.filter((v) =>
+    v.outlet ? v.outlet === outletId : channels.length === 1 && channels[0] === outletId,
+  );
+}
+
+/**
+ * The outlets box: one tile per place the brand publishes, each labelled
+ * with what it is — YouTube or the podcast — because the numbers mean
+ * different things and the names ("My Show", "My Show") do not say which.
+ */
+export function outletsSummary(data: ShowResponse, brand: string, days: number): HTMLElement {
+  const rows = outletRows(data);
+  const subtitle =
+    'Where this brand publishes. YouTube counts views and podcast apps count downloads, so the two are kept apart.';
+  if (!rows.length) {
+    return card('Outlets', el('p', 'No outlets recorded yet.', 'muted'), subtitle);
+  }
+  const videos = data.videos ?? [];
+  const channels = rows.filter((r) => r.kind === 'youtube').map((r) => r.id);
+  const grid = el('div', undefined, 'outlets');
+  for (const row of rows) {
+    const tile = el('div', undefined, 'outlet');
+    tile.append(el('span', outletLabel(row.kind), `outlet-kind ${row.kind}`));
+    const name = el('div', undefined, 'outlet-name');
+    // A channel and a feed each have a page of their own: the videos on one,
+    // and where the downloads of the other came from.
+    if (hasOutletPage(row.kind)) {
+      name.append(link(`#/s/${brand}/o/${row.id}?days=${days}`, row.name));
+    } else name.append(el('span', row.name));
+    tile.append(name);
+    tile.append(el('span', compact(row.plays), 'stat-value'));
+    const value = tile.lastElementChild!;
+    value.setAttribute('title', row.plays.toLocaleString('en-US'));
+    tile.append(el('span', `${playsWord(row.kind)}, last ${rangeLabel(days)}`, 'stat-label'));
+
+    const facts: string[] = [];
+    if (row.watchSeconds) facts.push(`${duration(row.watchSeconds)} watched`);
+    if (row.kind === 'youtube') {
+      const counts = countFormats(videosFor(videos, row.id, channels));
+      if (counts.long) facts.push(plural(counts.long, 'video'));
+      if (counts.shorts) facts.push(plural(counts.shorts, 'Short'));
+    } else if (row.kind === 'rss' && data.episodes.length) {
+      facts.push(plural(data.episodes.length, 'episode'));
+    }
+    if (facts.length) tile.append(el('span', facts.join(' · '), 'stat-note'));
+    grid.append(tile);
+  }
+  return card('Outlets', grid, subtitle);
+}
+
+function plural(n: number, word: string) {
+  return `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
 }
 
 /** How many of a brand's recorded videos are Shorts, for the stats row. */
@@ -469,6 +758,8 @@ export function countFormats(videos: VideoRow[]) {
 
 export interface VideoRow {
   videoId: string;
+  /** Which outlet it is on; absent on rows recorded before outlets existed. */
+  outlet?: string;
   title: string;
   /** When it was uploaded — not when a scheduled video goes live. */
   publishedAt: string;
