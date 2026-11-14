@@ -8,6 +8,10 @@ One upload in. An RSS feed (iTunes and Podcasting 2.0 tags) out, served from you
 
 **Status:** hosting, feeds, import and migration, download analytics, the dashboard, video and YouTube are all built. DarkRelay is now organised around [brands and outlets](#brands-and-outlets): not every brand is a podcast. See [Roadmap](#roadmap).
 
+![A brand page in the DarkRelay dashboard: plays and downloads for the last 90 days, plays per day, a table of plays by outlet, bar charts of podcast apps, countries and devices, and the episode table with 7-, 30- and 90-day download counts](docs/images/dashboard-brand.png)
+
+<sup>A brand page in the dashboard. The screenshots in this README are of a real build filled with placeholder brands and invented numbers.</sup>
+
 ## Quickstart
 
 About **$1-4 a month** at personal scale ([cost breakdown](#cost)). You need Node 22+, Docker or Podman (for the transcoder image), AWS credentials, and the account [bootstrapped for CDK](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html) in us-east-1.
@@ -94,8 +98,8 @@ Removing an outlet stops counting it and nothing else: the feed keeps serving an
 A channel is an outlet like any other, and a brand can be nothing but a channel. Connect it once, and the connection names the brand it belongs to:
 
 ```bash
-npx darkrelay youtube connect drjoanneskiles --brand drjoanneskiles   # creates the brand if it is new
-npx darkrelay youtube backfill drjoanneskiles --from 2024-01-01       # read the channel's history
+npx darkrelay youtube connect my-channel --brand my-channel   # creates the brand if it is new
+npx darkrelay youtube backfill my-channel --from 2024-01-01   # read the channel's history
 ```
 
 `connect --brand` stores the OAuth token in SSM exactly as before, then adds (or updates) that brand's `youtube` outlet with the channel's id and title. A brand that does not exist yet is created, named after the channel; it has no feed, and nothing about it expects one. For a podcast whose episodes should keep uploading automatically, also keep `"youtube": { "connection": "..." }` in the show file: that is what the uploader reads.
@@ -423,9 +427,15 @@ npx darkrelay analytics run --from 2026-10-01     # backfill (raw logs are kept 
 
 A **brand switcher** with icons sits in the header whenever you can see more than one brand. On a brand page, anyone with `uploader` for that brand — or `admin` — can replace the icon by clicking it and picking a square JPEG or PNG (128-3000 px, under 2 MB). This follows the brand, not the feed: a brand with no feed at all, such as a YouTube-only one, has its icon changed the same way, which is why `/me` answers with `manage` (brands) as well as `upload` (shows an episode can go to). The icon is checked again in the API — the same rules the CLI applies — so a button the UI happens to show is never the protection. The new icon is stored under a key derived from its bytes, so it appears at once and no cache serves the one it replaced. A brand page sums every outlet and lists its episodes, its **Videos** and its **Shorts** — kept in separate sections, because a Short is found in a feed and a long video is chosen, so one table of both hides how either is doing. Anything that is not out yet is listed at the top of its section, badged _Scheduled_ with the date and time it goes live in your own time zone — whether DarkRelay scheduled it or you scheduled it in YouTube Studio, because the nightly run records the release time the platform is holding (`status.publishAt`) and not just the upload time. A video that is private or unlisted with no release time says that instead, and a failed upload says so with its reason. A YouTube outlet has a page of its own: channel views per day, subscribers gained and lost, Shorts against long-form, and where the views came from. **Schedule** shows what is going out next, across every brand.
 
+![A YouTube channel outlet page: channel views for the last 90 days, watch time, net subscribers, the plays DarkRelay can account for, a views-per-day chart, the Shorts against long-form split, and a bar chart of traffic sources](docs/images/dashboard-channel.png)
+
+<sup>A channel outlet page. Channel numbers are never added into brand totals, so the page shows both: what the channel did, and what DarkRelay can account for.</sup>
+
 ### The schedule in the dashboard
 
 **Schedule** in the header is a cross-brand calendar: every video and Short going out, grouped by day in your own time zone, with where each one stands — not uploaded yet, uploaded and waiting, live, or failed with the reason. Anything with no slot is listed separately, because nothing is ever uploaded without one. It covers content, not episodes: an episode's release is owned by its feed, and finding future ones means reading every manifest, which is too much for a page load.
+
+![The schedule page: counts of scheduled, waiting and failed items, a waiting plan offering six proposed slots, and a day-by-day calendar from Today through the following week, each entry showing its time, brand, kind and state, with a failed upload marked in red](docs/images/dashboard-schedule.png)
 
 Each brand has a **slot page** (`#/s/<brand>/slots`) showing the week as a heatmap, a cell per hour, shaded by how that hour has actually done for that brand. A blank cell means nothing has ever been published then — which is information, so it is left blank rather than shaded as though it were bad. Hovering a cell gives the numbers behind it: the score, how many videos it rests on, their first-72h views, how much got watched, and subscribers won.
 
@@ -459,6 +469,8 @@ Users created before roles existed have no role and see nothing. Delete them wit
 ### Uploading from the dashboard
 
 Uploaders and admins get an **Upload episode** page: show, title, show notes (HTML), release time (now, or a date and time in the browser's time zone), season, episode number, type, explicit, and files (audio or a video episode, plus optional transcript, chapters, artwork, YouTube thumbnail and an audiogram video). It produces the same bundle as `darkrelay publish`, so publishing, video processing and YouTube uploads work the same way, and the page follows the result through to published, scheduled or rejected.
+
+![The Upload episode form: show, title, show notes as HTML, a release choice of now or a date and time in the browser's time zone, season, episode number and type, an explicit checkbox, and file pickers for audio or video, transcript, chapters, episode artwork, YouTube thumbnail and audiogram video](docs/images/dashboard-upload.png)
 
 The browser sends the files straight to S3 as multipart uploads, so multi-GB videos are fine and nothing needs AWS credentials. The API hands out presigned URLs for one part at a time (valid 15 minutes, only for that bundle's files under `inbox/<show>/<bundleId>/`), failed parts are retried, and **Retry** resumes from the parts already sent. The API writes `episode.json` itself, last, after checking it against the bundle schema. The episode length is read in the browser; if it can't read the file, the page asks for it.
 
