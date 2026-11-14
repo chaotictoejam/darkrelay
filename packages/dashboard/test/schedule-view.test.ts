@@ -305,6 +305,43 @@ describe('slotsView', () => {
     expect(shown).toContain('Late clip: the window ran out of slots');
   });
 
+  it('plans only unslotted content by default', async () => {
+    stub.get.set('/schedule/cc/slots', slotScores());
+    stub.get.set('/schedule/cc/plans', { brand: 'cc', plans: [] });
+    stub.post.set('/schedule/cc/plans', plan());
+    await slotsView(app, config, 'cc');
+    expect(text(app)).toContain('everything with no slot yet');
+    find(app, (n: Node) => n._text === 'Propose a plan')[0]!.handlers.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(stub.posted).toEqual([
+      {
+        path: '/schedule/cc/plans',
+        body: { replan: undefined, weeks: undefined, perWeek: undefined },
+      },
+    ]);
+  });
+
+  /** The case for a brand whose Shorts are already scheduled and uploaded. */
+  it('asks for a replan, and says what that means for uploaded clips', async () => {
+    stub.get.set('/schedule/cc/slots', slotScores());
+    stub.get.set('/schedule/cc/plans', { brand: 'cc', plans: [] });
+    stub.post.set('/schedule/cc/plans', plan());
+    await slotsView(app, config, 'cc');
+    const box = find(app, (n: Node) => n.tag === 'input' && n.type === 'checkbox')[0]!;
+    box.checked = true;
+    box.handlers.change();
+    const shown = text(app);
+    expect(shown).toContain('settled slots included');
+    expect(shown).toContain('release time moved there, and is not uploaded again');
+
+    const weeks = find(app, (n: Node) => n.tag === 'input' && n.type === 'number');
+    weeks[0]!.value = '4';
+    weeks[1]!.value = '2';
+    find(app, (n: Node) => n._text === 'Propose a plan')[0]!.handlers.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(stub.posted[0]!.body).toEqual({ replan: true, weeks: 4, perWeek: 2 });
+  });
+
   it('shows the plan the url asks for, not merely the newest', async () => {
     stub.get.set('/schedule/cc/slots', slotScores());
     stub.get.set('/schedule/cc/plans', {

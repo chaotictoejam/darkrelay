@@ -21,7 +21,7 @@ import {
   type ClipInput,
 } from './shorts-plan';
 import { sendAll, setBusy, sleep, type FileJob } from './transfer';
-import { el, link } from './ui';
+import { el, field, link } from './ui';
 import { bytes } from './upload-plan';
 
 /**
@@ -31,13 +31,6 @@ import { bytes } from './upload-plan';
  * goes up a few days before its slot — so the page says so plainly rather
  * than letting anyone think they just published.
  */
-
-function field(label: string, control: HTMLElement, hint?: string) {
-  const wrap = el('label', undefined, 'field');
-  wrap.append(el('span', label, 'field-label'), control);
-  if (hint) wrap.append(el('span', hint, 'field-hint'));
-  return wrap;
-}
 
 /** One clip's row: the file it came from, and the inputs that describe it. */
 interface ClipRow {

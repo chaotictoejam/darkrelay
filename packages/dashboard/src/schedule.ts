@@ -12,7 +12,7 @@ import {
 } from './api';
 import type { RuntimeConfig } from './auth';
 import { slotEditor } from './reschedule';
-import { brandIcon, card, el, link, scroller, stat } from './ui';
+import { brandIcon, card, el, field, link, scroller, stat } from './ui';
 import { compact, formatName, stateNote } from './format';
 
 // `stateNote` reads the same words on a channel page as it does here, so it
@@ -466,13 +466,40 @@ export async function slotsView(
     );
   }
 
+  // A plan leaves settled slots alone unless asked: re-placing what is
+  // already scheduled is a decision, not a default.
+  const replan = el('input');
+  replan.type = 'checkbox';
+  const replanLabel = el('label', undefined, 'inline');
+  replanLabel.append(replan, ' Move slots that are already set, including uploaded clips');
+
+  const count = (placeholder: string) => {
+    const i = el('input');
+    i.type = 'number';
+    i.min = '1';
+    i.step = '1';
+    i.inputMode = 'numeric';
+    i.placeholder = placeholder;
+    return i;
+  };
+  const weeks = count('6');
+  const perWeek = count('3');
+  const numbers = el('div', undefined, 'field-row');
+  numbers.append(field('Weeks', weeks), field('Per week', perWeek));
+
   const build = el('button', 'Propose a plan');
   build.className = 'button';
   build.addEventListener('click', async () => {
     build.disabled = true;
     build.textContent = 'Planning…';
+    const whole = (input: HTMLInputElement) =>
+      input.value && Number.isInteger(Number(input.value)) ? Number(input.value) : undefined;
     try {
-      const plan = await post<SchedulePlan>(config, `/schedule/${brand}/plans`, {});
+      const plan = await post<SchedulePlan>(config, `/schedule/${brand}/plans`, {
+        replan: replan.checked || undefined,
+        weeks: whole(weeks),
+        perWeek: whole(perWeek),
+      });
       // Changing the hash is what redraws the page. Re-rendering here as
       // well would race that, and the loser could show the older plan.
       location.hash = `#/s/${brand}/slots?plan=${plan.planId}`;
@@ -482,15 +509,17 @@ export async function slotsView(
       build.textContent = 'Propose a plan';
     }
   });
+  const what = el('p', undefined, 'muted');
+  const describe = () => {
+    what.textContent = replan.checked
+      ? 'Re-places everything for this channel, settled slots included. Approving writes the new times; anything already uploaded to YouTube has its release time moved there, and is not uploaded again.'
+      : 'Builds a schedule for everything with no slot yet, best-scoring times first, with a share kept for slots nothing has been tried in.';
+  };
+  describe();
+  replan.addEventListener('change', describe);
+
   const buildBox = el('div');
-  buildBox.append(build);
-  buildBox.append(
-    el(
-      'p',
-      'Builds a schedule for everything with no slot yet, best-scoring times first, with a share kept for slots nothing has been tried in.',
-      'muted',
-    ),
-  );
+  buildBox.append(replanLabel, numbers, build, what);
   sections.push(card('Plan the next few weeks', buildBox));
 
   const older = plans.plans.filter((p) => p.planId !== chosen?.planId);

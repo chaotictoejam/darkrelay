@@ -64,10 +64,12 @@ function push(parent: Node, child: Node): Node {
 
 /** Every bit of text the tree would show, in order. */
 export function text(node: Node): string {
+  if (typeof node === 'string') return node;
   return [node._text, ...node.children.map(text)].filter(Boolean).join(' ');
 }
 
 export function find(node: Node, predicate: (n: Node) => boolean, out: Node[] = []): Node[] {
+  if (typeof node === 'string') return out;
   if (predicate(node)) out.push(node);
   for (const child of node.children) find(child, predicate, out);
   return out;

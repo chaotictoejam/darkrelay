@@ -18,9 +18,11 @@ import {
   formatSplit,
   link,
   outletsCard,
+  pendingFor,
   rangeControl,
   rangeLabel,
   rangeQuery,
+  scheduleBadge,
   stat,
   trend,
   videoCards,
@@ -158,9 +160,15 @@ export async function videoView(
   if (data.totals.watchSeconds) {
     stats.append(stat('Watch time', duration(data.totals.watchSeconds)));
   }
+  // A video the platform is still holding has not been published, whatever
+  // its upload date says: `publishedAt` is when the bytes arrived, so printing
+  // it as "published" calls a video scheduled for next week one that is out.
+  const waiting = pendingFor(v);
   const facts = [formatName(v.format)];
-  if (v.publishedAt) facts.push(`published ${shortDate(v.publishedAt)}`);
+  if (!waiting && v.publishedAt) facts.push(`published ${shortDate(v.publishedAt)}`);
   if (v.durationSeconds) facts.push(duration(v.durationSeconds));
+  const heading = el('h1', v.title);
+  if (waiting) heading.append(scheduleBadge(waiting));
   const watch = link(
     `https://www.youtube.com/watch?v=${encodeURIComponent(v.videoId)}`,
     'Watch on YouTube',
@@ -169,7 +177,7 @@ export async function videoView(
   watch.rel = 'noreferrer';
   app.replaceChildren(
     back,
-    el('h1', v.title),
+    heading,
     el('p', facts.join(' · '), 'muted'),
     rangeControl(`#/s/${brand}/v/${videoId}`, days),
     stats,

@@ -18,6 +18,7 @@ afterAll(() => fake.stop());
 
 const RANGE = { from: '2026-10-05', to: '2026-10-11' };
 const NOW = new Date('2026-10-12T04:00:00Z');
+const NOW_ISO = NOW.toISOString();
 
 /** Chaotic Commits: a feed plus a channel. */
 const podcastBrand = BrandConfig.parse({
@@ -156,6 +157,8 @@ function standardReports() {
 beforeEach(() => {
   table = new Map();
   fake.uploads = [];
+  fake.shapes = new Map();
+  fake.failFileDetails = undefined;
   fake.details = new Map([
     ['s1', { duration: 'PT45S', title: 'A Short', publishedAt: '2026-10-08T12:00:00Z' }],
   ]);
@@ -314,6 +317,55 @@ describe('pullYouTube', () => {
       publishedAt: '2026-10-09T22:13:05Z',
       privacyStatus: 'private',
       scheduledAt: '2026-10-20T14:00:00Z',
+    });
+  });
+
+  it('calls a short landscape video a video, not a Short', async () => {
+    // Nothing scheduled has ever been in an Analytics report, so its length
+    // was all there was to go on and every clip under three minutes came out
+    // as a Short. The shape of the upload is the other half of YouTube's own
+    // rule, and it is the half that tells a talk from a Short.
+    fake.uploads = [{ videoId: 'talk', title: 'IAM Least Privilege', publishedAt: NOW_ISO }];
+    fake.details.set('talk', {
+      duration: 'PT1M38S',
+      title: 'IAM Least Privilege',
+      publishedAt: NOW_ISO,
+      privacyStatus: 'private',
+      scheduledAt: '2026-10-20T14:00:00Z',
+    });
+    fake.shapes.set('talk', { widthPixels: 1920, heightPixels: 1080 });
+
+    await pullYouTube(deps(), RANGE, { listUploads: true });
+    expect(table.get(`S#cc|${metricKeys.videoMeta('talk')}`)).toMatchObject({
+      durationSeconds: 98,
+      format: 'long',
+    });
+  });
+
+  it('calls a short vertical video a Short', async () => {
+    fake.uploads = [{ videoId: 'clip', title: 'A clip', publishedAt: NOW_ISO }];
+    fake.details.set('clip', { duration: 'PT1M38S', title: 'A clip', publishedAt: NOW_ISO });
+    fake.shapes.set('clip', { widthPixels: 1080, heightPixels: 1920 });
+
+    await pullYouTube(deps(), RANGE, { listUploads: true });
+    expect(table.get(`S#cc|${metricKeys.videoMeta('clip')}`)).toMatchObject({ format: 'short' });
+  });
+
+  it('falls back to length, and finishes the run, when the shape cannot be read', async () => {
+    // `fileDetails` is the owner's view of a file YouTube may have finished
+    // with, so it can simply refuse. That is not a reason to lose the night.
+    fake.failFileDetails = 403;
+    fake.uploads = [{ videoId: 'talk', title: 'IAM Least Privilege', publishedAt: NOW_ISO }];
+    fake.details.set('talk', {
+      duration: 'PT1M38S',
+      title: 'IAM Least Privilege',
+      publishedAt: NOW_ISO,
+    });
+
+    await pullYouTube(deps(), RANGE, { listUploads: true });
+    expect(table.get(`S#cc|${metricKeys.videoMeta('talk')}`)).toMatchObject({
+      title: 'IAM Least Privilege',
+      format: 'short',
     });
   });
 

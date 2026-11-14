@@ -30,6 +30,14 @@ export function link(href: string, text: string) {
   return a;
 }
 
+/** A labelled control, with an optional line of help under it. */
+export function field(label: string, control: HTMLElement, hint?: string) {
+  const wrap = el('label', undefined, 'field');
+  wrap.append(el('span', label, 'field-label'), control);
+  if (hint) wrap.append(el('span', hint, 'field-hint'));
+  return wrap;
+}
+
 export function scroller(child: HTMLElement) {
   const div = el('div', undefined, 'scroll-x');
   div.append(child);
@@ -350,7 +358,7 @@ export function videosTable(brand: string, videos: VideoRow[], opts: VideoTableO
  */
 export function pendingFor(
   v: VideoRow,
-  waiting: Map<string, ScheduleEntry> | undefined,
+  waiting?: Map<string, ScheduleEntry>,
   now = new Date(),
 ): Pick<ScheduleEntry, 'state' | 'publishAt' | 'error'> | undefined {
   const known = waiting?.get(v.videoId);

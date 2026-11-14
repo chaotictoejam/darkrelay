@@ -179,6 +179,8 @@ A share of every plan — 20% by default, `--explore` to change it — goes to t
 
 **A plan writes nothing.** It is stored at `catalog/<brand>/plans/<planId>.json` to be read, and `plan approve` is the only command that puts the times onto content — and even that uploads nothing: the hourly sweep picks each item up when its slot comes within the lead time, exactly as it does for a slot set by hand.
 
+**A plan leaves settled slots alone** unless you ask otherwise: by default it places only what has no slot. `--replan` (the _Move slots that are already set_ box on the brand's publish-times page) re-places everything for that channel instead, which is how a schedule already in place gets rebuilt. Approving such a plan is still not a re-upload: a clip already sitting on YouTube keeps its video id and its URL, and only the release time the platform is holding is moved — straight away, not at the next sweep. Anything already public is skipped and said so.
+
 ```
   Mon, Nov 16, 18:00         Bus factor, part one
     Mon 18:00  score 1.00  nothing published in this slot yet: general prior for the hour

@@ -77,6 +77,30 @@ export interface VideoDetails {
   scheduledAt?: string;
 }
 
+/**
+ * Width ÷ height of a video stream as it is watched. A stream carries the
+ * pixels as they were stored, so a phone video recorded upright is 1920x1080
+ * with a quarter turn on it: ignoring the rotation would call every one of
+ * them landscape.
+ */
+export function aspectRatio(stream?: {
+  widthPixels?: number;
+  heightPixels?: number;
+  aspectRatio?: number;
+  rotation?: string;
+}): number | undefined {
+  if (!stream) return undefined;
+  const turned = stream.rotation === 'clockwise' || stream.rotation === 'counterClockwise';
+  const stored =
+    stream.widthPixels && stream.heightPixels
+      ? stream.widthPixels / stream.heightPixels
+      : stream.aspectRatio && stream.aspectRatio > 0
+        ? stream.aspectRatio
+        : undefined;
+  if (stored === undefined) return undefined;
+  return turned ? 1 / stored : stored;
+}
+
 /** Parses "bytes=0-1234" from a 308 Resume Incomplete response. */
 export function nextOffset(range: string | null): number {
   const m = range && /bytes=0-(\d+)/.exec(range);
@@ -315,6 +339,43 @@ export class YouTube {
           publishedAt: v.snippet?.publishedAt,
           scheduledAt: v.status?.publishAt,
         });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The shape of up to 50 uploads per call (1 quota unit each), as
+   * width ÷ height of what a viewer sees. YouTube only reports this to the
+   * channel that owns the video and only while it still holds the details of
+   * the file, so an id missing from the result is normal: callers need a
+   * fallback rather than an answer for every video.
+   */
+  async videoShapes(ids: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    for (let i = 0; i < ids.length; i += 50) {
+      const url = new URL(`${this.endpoints.api}/youtube/v3/videos`);
+      url.search = new URLSearchParams({
+        part: 'fileDetails',
+        id: ids.slice(i, i + 50).join(','),
+        maxResults: '50',
+      }).toString();
+      const r = await this.json<{
+        items?: {
+          id: string;
+          fileDetails?: {
+            videoStreams?: {
+              widthPixels?: number;
+              heightPixels?: number;
+              aspectRatio?: number;
+              rotation?: string;
+            }[];
+          };
+        }[];
+      }>(url.toString(), {}, 'Reading video file details');
+      for (const v of r.items ?? []) {
+        const shape = aspectRatio(v.fileDetails?.videoStreams?.[0]);
+        if (shape !== undefined) out.set(v.id, shape);
       }
     }
     return out;

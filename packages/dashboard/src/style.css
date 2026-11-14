@@ -550,7 +550,8 @@ fieldset.field {
   color: var(--text-muted);
 }
 /* A badge beside a title, not alone in a cell of its own. */
-td .badge {
+td .badge,
+h1 .badge {
   margin-left: 0.5rem;
   vertical-align: middle;
 }

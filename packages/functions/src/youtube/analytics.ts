@@ -8,6 +8,7 @@ import {
   metricKeys,
   outletsOfKind,
   parseIsoDuration,
+  SHORT_MAX_SECONDS,
   windowTotals,
   type BrandConfig,
   type DailyCounts,
@@ -70,6 +71,8 @@ interface VideoFacts {
   privacyStatus?: string;
   /** The release time YouTube is holding a scheduled video for. */
   scheduledAt?: string;
+  /** Width ÷ height of the upload, where YouTube still reports the file. */
+  aspectRatio?: number;
 }
 
 /**
@@ -169,7 +172,17 @@ async function pullOutlet(
   const held = opts.listUploads ? [] : await heldVideos(deps, brand, outlet);
   if (held.length)
     log('Re-reading videos not public yet', { brand: brand.slug, held: held.length });
-  const facts = await videoFacts(yt, brand, outlet, active, episodeByVideo, opts, log, held);
+  const facts = await videoFacts(
+    yt,
+    brand,
+    outlet,
+    active,
+    episodeByVideo,
+    opts,
+    log,
+    held,
+    shorts,
+  );
 
   const items: Record<string, unknown>[] = [];
   const touchedEpisodes: EpisodeManifest[] = [];
@@ -282,6 +295,7 @@ async function pullOutlet(
       format: classifyVideo({
         durationSeconds: fact.durationSeconds,
         creatorContentType: shorts.has(videoId) ? 'SHORTS' : undefined,
+        aspectRatio: fact.aspectRatio,
       }),
       durationSeconds: fact.durationSeconds,
       // Both are written only when the platform reports them, and the row is
@@ -378,6 +392,7 @@ async function videoFacts(
   opts: PullOptions,
   log: YouTubeAnalyticsDeps['log'],
   alsoWanted: string[] = [],
+  shorts: Set<string> = new Set(),
 ): Promise<Map<string, VideoFacts>> {
   const facts = new Map<string, VideoFacts>();
   const wanted = new Set(
@@ -410,6 +425,36 @@ async function videoFacts(
       privacyStatus: details.privacyStatus,
       scheduledAt: details.scheduledAt,
     });
+  }
+
+  // Only the videos that length alone would decide need a second look, which
+  // is a handful per run: everything Analytics already named is settled, and
+  // so is anything over three minutes.
+  const unsure = [...facts]
+    .filter(
+      ([id, f]) => !shorts.has(id) && f.durationSeconds && f.durationSeconds <= SHORT_MAX_SECONDS,
+    )
+    .map(([id]) => id);
+  if (unsure.length) {
+    try {
+      const shapes = await yt.videoShapes(unsure);
+      for (const [id, aspectRatio] of shapes) facts.set(id, { ...facts.get(id)!, aspectRatio });
+      log('Read video shapes', {
+        brand: brand.slug,
+        outlet: outlet.id,
+        asked: unsure.length,
+        answered: shapes.size,
+      });
+    } catch (e) {
+      // The file details are a nicety, not the run: without them the format
+      // falls back to length, which is what it did before they existed.
+      log('Could not read video shapes', {
+        brand: brand.slug,
+        outlet: outlet.id,
+        videos: unsure.length,
+        error: String(e),
+      });
+    }
   }
   return facts;
 }

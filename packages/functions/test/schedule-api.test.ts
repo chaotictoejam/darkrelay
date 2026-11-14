@@ -423,6 +423,52 @@ describe('approval', () => {
   });
 });
 
+describe('approving a replan', () => {
+  it('moves the release time of clips already on YouTube, and leaves the ids alone', async () => {
+    seedHistory('cc');
+    const planned = seedContent('cc', {
+      publishAt: '2026-11-20T18:00:00Z',
+      publications: [
+        {
+          outlet: 'youtube',
+          state: 'scheduled',
+          externalId: 'yt-1',
+          publishAt: '2026-11-20T18:00:00Z',
+          sentPublishAt: '2026-11-20T18:00:00Z',
+          warnings: [],
+        },
+      ],
+    });
+    const synced: unknown[] = [];
+    const syncNow = async (event: { brand: string; id: string; outlet: string }) => {
+      synced.push(event);
+    };
+    // Without `replan` a settled slot is left alone, which is why the
+    // dashboard has to ask for one.
+    const left = await planContent(deps({ syncNow }), { brand: 'cc' });
+    expect(left.assignments).toEqual([]);
+
+    const plan = await planContent(deps({ syncNow }), { brand: 'cc', replan: true });
+    expect(plan.assignments.map((a) => a.id)).toEqual([planned.id]);
+
+    const res = await route(
+      deps({ syncNow }),
+      req({
+        method: 'POST',
+        path: `/schedule/cc/plans/${plan.planId}/approve`,
+        access: uploader,
+      }),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ moved: [planned.id] });
+    expect(synced).toEqual([{ brand: 'cc', id: planned.id, outlet: 'youtube' }]);
+
+    const stored = ContentItem.parse(store.json(layout.contentItem('cc', planned.id)));
+    expect(stored.publishAt).toBe(plan.assignments[0]!.publishAt);
+    expect(stored.publications[0]).toMatchObject({ state: 'scheduled', externalId: 'yt-1' });
+  });
+});
+
 describe('moving one slot', () => {
   const move = (id: string, body: unknown, access = uploader, over: Partial<PlannerDeps> = {}) =>
     route(deps(over), req({ method: 'POST', path: `/schedule/cc/content/${id}`, body, access }));

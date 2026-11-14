@@ -176,9 +176,10 @@ export const UploadState = z.object({
 export type UploadState = z.infer<typeof UploadState>;
 
 /**
- * A Short is at most three minutes. Duration alone is a guess (a short talk
- * is not a Short), so it is only the fallback: `creatorContentType` from
- * YouTube Analytics decides whenever the video appears in a report.
+ * A Short is at most three minutes *and* vertical. Length alone is a guess (a
+ * short talk is not a Short), so it is only the last resort:
+ * `creatorContentType` from YouTube Analytics decides whenever the video
+ * appears in a report, and the shape of the upload decides where it does not.
  */
 export const SHORT_MAX_SECONDS = 180;
 
@@ -191,15 +192,25 @@ export function parseIsoDuration(iso: string): number | undefined {
 }
 
 /**
- * What kind of video this is. `creatorContentType` wins where YouTube
- * reported one; otherwise a video at or under three minutes is taken to be a
- * Short, which is right for a clip feed and wrong for a very short talk.
+ * What kind of video this is, from the best evidence there is.
+ * `creatorContentType` wins where YouTube reported one, but it is only
+ * reported for a video with views in the range, so nothing scheduled or
+ * newly uploaded ever has it. Failing that this follows YouTube's own rule —
+ * a Short is at most three minutes and is vertical or square — because
+ * length on its own calls every two-minute landscape talk a Short.
+ * `aspectRatio` is width ÷ height, and is missing often enough that length
+ * stays the guess of last resort.
  */
 export function classifyVideo(video: {
   durationSeconds?: number;
   creatorContentType?: string;
+  aspectRatio?: number;
 }): VideoFormat {
   if (video.creatorContentType) return videoFormat(video.creatorContentType);
-  if (video.durationSeconds === undefined) return 'other';
-  return video.durationSeconds <= SHORT_MAX_SECONDS ? 'short' : 'long';
+  // A duration of zero is what a live stream and a video still being
+  // processed both report: neither is three minutes of vertical video.
+  if (!video.durationSeconds) return 'other';
+  if (video.durationSeconds > SHORT_MAX_SECONDS) return 'long';
+  if (video.aspectRatio !== undefined) return video.aspectRatio <= 1 ? 'short' : 'long';
+  return 'short';
 }

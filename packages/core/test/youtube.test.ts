@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   EpisodeInput,
+  aspectRatio,
+  classifyVideo,
   chapterLines,
   formatTimestamp,
   hasChapterTimestamps,
@@ -173,5 +175,62 @@ describe('EpisodeInput youtube copy', () => {
     expect(
       EpisodeInput.safeParse({ ...base, youtube: { description: 'é'.repeat(2501) } }).success,
     ).toBe(false);
+  });
+});
+
+describe('classifyVideo', () => {
+  it('takes YouTube\u2019s own word over everything else', () => {
+    expect(classifyVideo({ creatorContentType: 'SHORTS', durationSeconds: 600 })).toBe('short');
+    expect(classifyVideo({ creatorContentType: 'VIDEO_ON_DEMAND', durationSeconds: 30 })).toBe(
+      'long',
+    );
+    expect(classifyVideo({ creatorContentType: 'LIVE_STREAM' })).toBe('live');
+  });
+
+  it('calls a short landscape video a video, not a Short', () => {
+    // The case that started this: a 98-second talk, scheduled and so absent
+    // from every Analytics report, is 16:9 and belongs under Videos.
+    expect(classifyVideo({ durationSeconds: 98, aspectRatio: 16 / 9 })).toBe('long');
+    expect(classifyVideo({ durationSeconds: 98, aspectRatio: 9 / 16 })).toBe('short');
+    // A square upload is still Shorts-eligible.
+    expect(classifyVideo({ durationSeconds: 98, aspectRatio: 1 })).toBe('short');
+  });
+
+  it('falls back to length where the shape is unknown', () => {
+    expect(classifyVideo({ durationSeconds: 98 })).toBe('short');
+    expect(classifyVideo({ durationSeconds: 181 })).toBe('long');
+    // Length cannot make something long into a Short, whatever its shape.
+    expect(classifyVideo({ durationSeconds: 600, aspectRatio: 9 / 16 })).toBe('long');
+  });
+
+  it('refuses to guess with no length at all', () => {
+    expect(classifyVideo({})).toBe('other');
+    // What a live stream and a video still processing both report.
+    expect(classifyVideo({ durationSeconds: 0 })).toBe('other');
+  });
+});
+
+describe('aspectRatio', () => {
+  it('reads the pixels of the stream', () => {
+    expect(aspectRatio({ widthPixels: 1920, heightPixels: 1080 })).toBeCloseTo(16 / 9);
+    expect(aspectRatio({ widthPixels: 1080, heightPixels: 1920 })).toBeCloseTo(9 / 16);
+  });
+
+  it('turns a stream that is stored sideways', () => {
+    // A phone video held upright is stored landscape with a quarter turn on
+    // it; taking the pixels at face value would call every one of them wide.
+    expect(
+      aspectRatio({ widthPixels: 1920, heightPixels: 1080, rotation: 'clockwise' }),
+    ).toBeCloseTo(9 / 16);
+    expect(aspectRatio({ widthPixels: 1920, heightPixels: 1080, rotation: 'none' })).toBeCloseTo(
+      16 / 9,
+    );
+  });
+
+  it('answers nothing where YouTube reported nothing', () => {
+    expect(aspectRatio(undefined)).toBeUndefined();
+    expect(aspectRatio({})).toBeUndefined();
+    expect(aspectRatio({ aspectRatio: 0 })).toBeUndefined();
+    expect(aspectRatio({ aspectRatio: 1.7778 })).toBeCloseTo(16 / 9, 3);
   });
 });

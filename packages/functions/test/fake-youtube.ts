@@ -44,6 +44,10 @@ export class FakeYouTube {
       scheduledAt?: string;
     }
   >();
+  /** Pixel shape of the upload YouTube still holds, keyed by video id. */
+  shapes = new Map<string, { widthPixels: number; heightPixels: number; rotation?: string }>();
+  /** Fail `fileDetails` reads with this HTTP status (e.g. 403 for a missing scope). */
+  failFileDetails?: number;
   /** What the "audit" forces new videos to. */
   forcePrivate = false;
   reports: (params: URLSearchParams) => { columnHeaders: { name: string }[]; rows: unknown[][] } =
@@ -181,6 +185,21 @@ export class FakeYouTube {
     }
     if (url.pathname === '/youtube/v3/videos' && req.method === 'GET') {
       const ids = (url.searchParams.get('id') ?? '').split(',').filter(Boolean);
+      if ((url.searchParams.get('part') ?? '').includes('fileDetails')) {
+        if (this.failFileDetails) {
+          return { status: this.failFileDetails, body: { error: { message: 'no file details' } } };
+        }
+        return {
+          status: 200,
+          body: {
+            // YouTube drops the file details of videos it has finished with,
+            // so an id with no shape is simply absent from the response.
+            items: ids
+              .filter((id) => this.shapes.has(id))
+              .map((id) => ({ id, fileDetails: { videoStreams: [this.shapes.get(id)!] } })),
+          },
+        };
+      }
       return {
         status: 200,
         body: {

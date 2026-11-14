@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OutletResponse, ScheduleEntry, ScheduleResponse, VideoSummary } from '../src/api';
+import type {
+  OutletResponse,
+  ScheduleEntry,
+  ScheduleResponse,
+  VideoResponse,
+  VideoSummary,
+} from '../src/api';
 import type { RuntimeConfig } from '../src/auth';
 import { createElement, find, installDom, text, type Node } from './dom';
 
@@ -23,7 +29,7 @@ vi.mock('../src/api', () => ({
 
 const { videoCards, countFormats, countPending, rangeQuery } = await import('../src/ui');
 const { slotTime, shortDate } = await import('../src/format');
-const { outletView } = await import('../src/outlets');
+const { outletView, videoView } = await import('../src/outlets');
 const { pendingContent } = await import('../src/schedule');
 
 const config = { apiUrl: 'https://api.example', mediaUrl: 'https://cdn.example' } as RuntimeConfig;
@@ -348,5 +354,55 @@ describe('outletView', () => {
     expect(shown).toContain('Waiting clip');
     expect(shown).toContain('Scheduled');
     vi.useRealTimers();
+  });
+});
+
+describe('videoView', () => {
+  const response = (over: Partial<VideoSummary>): VideoResponse => ({
+    show: 'dr',
+    brand: 'dr',
+    from: '2026-11-05',
+    to: '2026-11-12',
+    daily: [],
+    totals: { downloads: 0, serverDownloads: 0, apps: {}, countries: {}, devices: {} },
+    sources: [],
+    bySource: [],
+    byOutlet: [],
+    video: video({ videoId: 'v1', ...over }),
+  });
+
+  const draw = async (over: Partial<VideoSummary>) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const app = createElement('main');
+    stub.get.set(`/brands/dr/videos/v1?${rangeQuery(7)}`, response(over));
+    await videoView(app, config, 'dr', 'v1', 7);
+    vi.useRealTimers();
+    return text(app);
+  };
+
+  it('says a video YouTube is holding is scheduled, with the date it goes live', async () => {
+    // The upload date is days before the release, and is not "published".
+    const shown = await draw({
+      title: 'IAM Least Privilege in Practice',
+      publishedAt: '2026-11-14T03:07:26Z',
+      scheduledAt: '2026-11-18T05:00:00Z',
+      privacyStatus: 'private',
+    });
+    expect(shown).toContain(`Scheduled · ${slotTime('2026-11-18T05:00:00Z')}`);
+    expect(shown).not.toContain('published');
+    expect(shown).not.toContain(shortDate('2026-11-14T03:07:26Z'));
+  });
+
+  it('says private, not scheduled, where there is no release time', async () => {
+    const shown = await draw({ privacyStatus: 'private', scheduledAt: undefined });
+    expect(shown).toContain('Private');
+    expect(shown).not.toContain('published');
+  });
+
+  it('keeps the publish date for a video that is out', async () => {
+    const shown = await draw({ privacyStatus: 'public' });
+    expect(shown).toContain(`published ${shortDate('2026-10-01T14:00:00Z')}`);
+    expect(shown).not.toContain('Scheduled');
   });
 });

@@ -239,13 +239,16 @@ export interface ApprovalResult {
   plan: SchedulePlan;
   applied: { id: string; publishAt: string }[];
   skipped: { id: string; reason: string }[];
+  /** Ids already on the platform, whose release time is being moved there now. */
+  moved: string[];
 }
 
 /**
  * Approval: the one step that writes a plan's times onto content. Even then
  * nothing is uploaded here — the hourly sweep picks each item up when its
  * slot comes within the lead time, exactly as it does for a slot set by
- * hand.
+ * hand. An item already uploaded is a different case: the platform is
+ * holding the old release time, so the worker is asked to move it now.
  */
 export async function approvePlan(
   deps: PlannerDeps,
@@ -263,6 +266,7 @@ export async function approvePlan(
 
   const applied: { id: string; publishAt: string }[] = [];
   const skipped: { id: string; reason: string }[] = [];
+  const moved: string[] = [];
 
   for (const assignment of plan.assignments) {
     const key = layout.contentItem(plan.brand, assignment.id);
@@ -293,6 +297,13 @@ export async function approvePlan(
       contentType: 'application/json',
     });
     applied.push({ id: assignment.id, publishAt: assignment.publishAt });
+    // Uploaded already and waiting on YouTube: a replan has to reach the
+    // platform, or the old time is the one that happens.
+    if (publication?.externalId) moved.push(assignment.id);
+  }
+
+  for (const id of moved) {
+    if (deps.syncNow) await deps.syncNow({ brand: plan.brand, id, outlet: plan.outlet });
   }
 
   const approved: SchedulePlan = {
@@ -310,8 +321,9 @@ export async function approvePlan(
     planId: plan.planId,
     applied: applied.length,
     skipped: skipped.length,
+    moved: moved.length,
   });
-  return { plan: approved, applied, skipped };
+  return { plan: approved, applied, skipped, moved };
 }
 
 export interface RescheduleResult {
