@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in DarkRelay is broken or behaves differently than the docs say.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Before you paste anything**, remove AWS account IDs, OAuth tokens, signed URLs, IP addresses and anything from an unpublished episode.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran, e.g. `npx darkrelay publish ...`.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Deploy / CDK
+        - Publishing and feeds
+        - Import or migration from another host
+        - Download analytics
+        - Dashboard
+        - Video / transcoder
+        - YouTube uploads or analytics
+        - Shorts scheduling or planning
+        - CLI
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Node version, OS, Docker or Podman, and your domain setup (none, Route 53 or external DNS).
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: CLI output, `darkrelay status`, or CloudWatch logs. Redacted, please.
+      render: text

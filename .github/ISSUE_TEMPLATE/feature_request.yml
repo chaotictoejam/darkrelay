@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest something DarkRelay should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do as a podcaster or creator, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: How you'd want it to work. Commands, config or dashboard changes are all welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: cost
+    attributes:
+      label: Cost and data
+      description: Would this add an AWS service, a monthly cost, or send data anywhere new? A guess is fine.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to build this myself.
