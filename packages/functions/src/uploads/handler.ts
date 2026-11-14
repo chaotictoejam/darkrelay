@@ -8,6 +8,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SLUG, accessFromGroups, groupsClaim, newBundleId, newEpisodeGuid } from '@darkrelay/core';
+import { loadBrand } from '../lib/brands';
 import { S3Store } from '../lib/store';
 import { route, type UploadDeps } from './api';
 
@@ -18,9 +19,12 @@ const PART_URL_SECONDS = 15 * 60;
 // Without this the SDK adds a checksum of an empty body to signed part URLs,
 // and S3 rejects the real bytes.
 const s3 = new S3Client({ requestChecksumCalculation: 'WHEN_REQUIRED' });
+const store = new S3Store(bucket, s3);
+const log = (message: string, data?: Record<string, unknown>) =>
+  console.log(JSON.stringify({ message, ...data }));
 
 const deps: UploadDeps = {
-  store: new S3Store(bucket, s3),
+  store,
   multipart: {
     async create(key, contentType) {
       const r = await s3.send(
@@ -62,6 +66,7 @@ const deps: UploadDeps = {
       .filter((s) => SLUG.test(s))
       .sort();
   },
+  loadBrand: (brand) => loadBrand(store, brand, log),
   newBundleId: () => newBundleId(),
   newGuid: newEpisodeGuid,
   now: () => new Date(),

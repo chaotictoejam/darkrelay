@@ -398,6 +398,8 @@ describe('dashboard', () => {
     const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route'));
     expect(routes.map((r) => r['Properties'].RouteKey).sort()).toEqual([
       'GET /brands',
+      'GET /brands/{brand}/shorts',
+      'GET /brands/{brand}/shorts/{batchId}',
       'GET /brands/{proxy+}',
       'GET /me',
       'GET /schedule',
@@ -410,6 +412,8 @@ describe('dashboard', () => {
       'GET /shows/{show}/catalog/{episodeId}',
       'GET /shows/{show}/uploads/{bundleId}',
       'POST /brands/{brand}/icon',
+      'POST /brands/{brand}/shorts',
+      'POST /brands/{brand}/shorts/{batchId}/{action}',
       'POST /schedule/{brand}/plans',
       'POST /schedule/{brand}/plans/{planId}/approve',
       'POST /shows/{brand}/icon',
@@ -491,7 +495,7 @@ describe('dashboard', () => {
       JSON.stringify(st['Action']).includes('GetObject'),
     )) {
       expect(JSON.stringify(st['Resource'])).toMatch(
-        /\/(inbox\/\*|inbox-status\/\*|catalog\/\*\/(show\.json|episodes\/\*))"/,
+        /\/(inbox\/\*|inbox-status\/\*|catalog\/\*\/(show\.json|brand\.json|episodes\/\*))"/,
       );
     }
   });

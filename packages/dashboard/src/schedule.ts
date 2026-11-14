@@ -11,6 +11,7 @@ import {
   type SlotScoresResponse,
 } from './api';
 import type { RuntimeConfig } from './auth';
+import { slotEditor } from './reschedule';
 import { brandIcon, card, el, link, scroller, stat } from './ui';
 import { compact, formatName, stateNote } from './format';
 
@@ -146,7 +147,15 @@ export function dayLabel(iso: string, now = new Date()): string {
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-function entryRow(entry: ScheduleEntry) {
+/** What a row may offer beyond reading: moving this item's slot. */
+export interface RowOptions {
+  config: RuntimeConfig;
+  canSchedule: boolean;
+  /** Called after a save, so the list can be drawn again in the new order. */
+  onChanged: () => void;
+}
+
+function entryRow(entry: ScheduleEntry, opts?: RowOptions) {
   const row = el('li', undefined, entry.state === 'failed' ? 'entry failed' : 'entry');
   const when = el('span', clock(entry.publishAt!), 'entry-time');
   const body = el('div', undefined, 'entry-body');
@@ -163,14 +172,37 @@ function entryRow(entry: ScheduleEntry) {
   body.append(title);
   body.append(el('div', `${entry.brandTitle} · ${stateNote(entry)}`, 'muted'));
   for (const w of entry.warnings ?? []) body.append(el('div', w, 'warn'));
+  // An item already uploaded to YouTube can be moved too: the worker tells
+  // the platform the new time, and nothing is re-uploaded.
+  if (opts?.canSchedule) body.append(slotEditor(opts.config, slotTarget(entry), opts.onChanged));
   row.append(when, body);
   return row;
 }
+
+const slotTarget = (entry: ScheduleEntry) => ({
+  brand: entry.brand,
+  id: entry.id,
+  title: entry.title,
+  publishAt: entry.publishAt,
+  state: entry.state,
+  externalId: entry.externalId,
+});
 
 /** The cross-brand calendar: every brand's next few weeks in one column. */
 export async function calendarView(app: HTMLElement, config: RuntimeConfig) {
   const data = await get<ScheduleResponse>(config, '/schedule');
   const now = new Date(data.now);
+  const mine = new Set(data.brands.filter((b) => b.canSchedule).map((b) => b.brand));
+  // A moved slot changes where the item sits in the list, so the page is
+  // drawn again once the answer has been read.
+  const rowOptions = (brand: string): RowOptions | undefined =>
+    mine.has(brand)
+      ? {
+          config,
+          canSchedule: true,
+          onChanged: () => setTimeout(() => void calendarView(app, config), 1500),
+        }
+      : undefined;
   const sections: HTMLElement[] = [el('h1', 'Schedule')];
   sections.push(
     el(
@@ -198,7 +230,7 @@ export async function calendarView(app: HTMLElement, config: RuntimeConfig) {
       const group = el('section', undefined, 'cal-day');
       group.append(el('h3', day.label));
       const items = el('ul', undefined, 'entries');
-      for (const entry of day.entries) items.append(entryRow(entry));
+      for (const entry of day.entries) items.append(entryRow(entry, rowOptions(entry.brand)));
       group.append(items);
       list.append(group);
     }
@@ -220,6 +252,8 @@ export async function calendarView(app: HTMLElement, config: RuntimeConfig) {
       const body = el('div', undefined, 'entry-body');
       body.append(el('div', entry.title, 'entry-title'));
       body.append(el('div', entry.brandTitle, 'muted'));
+      const opts = rowOptions(entry.brand);
+      if (opts) body.append(slotEditor(config, slotTarget(entry), opts.onChanged));
       row.append(body);
       list.append(row);
     }

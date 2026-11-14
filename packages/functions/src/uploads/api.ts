@@ -9,24 +9,24 @@ import {
   contentTypeFor,
   layout,
   type Access,
+  type BrandConfig,
   type EpisodeInputRaw,
 } from '@darkrelay/core';
 import { z } from 'zod';
 import { error, isResponse, parse, type ApiResponse } from '../lib/http';
 import type { Store } from '../lib/store';
+import {
+  MAX_FILE_BYTES,
+  completeFile,
+  partSize,
+  signParts,
+  type Multipart,
+  type Transfer,
+} from './multipart';
+import { route as shortsRoute } from './shorts-api';
 
-export type { ApiResponse };
-
-/** S3 multipart uploads, signed for the browser to send the bytes itself. */
-export interface Multipart {
-  create(key: string, contentType: string): Promise<string>;
-  signPart(key: string, uploadId: string, partNumber: number): Promise<string>;
-  complete(
-    key: string,
-    uploadId: string,
-    parts: { partNumber: number; etag: string }[],
-  ): Promise<void>;
-}
+export type { ApiResponse, Multipart };
+export { MAX_FILE_BYTES, SIGN_BATCH, partSize } from './multipart';
 
 export interface UploadDeps {
   store: Pick<Store, 'getText' | 'head' | 'list' | 'createIfAbsent'>;
@@ -37,6 +37,12 @@ export interface UploadDeps {
    * list of shows an episode can be uploaded to.
    */
   listCatalog(): Promise<string[]>;
+  /**
+   * The brand as stored, or the brand a show stands for. The Shorts routes
+   * are brand-scoped: a Short goes to a channel, and a YouTube-only brand
+   * has no show.json to hang an upload off.
+   */
+  loadBrand(brand: string): Promise<BrandConfig | undefined>;
   newBundleId(): string;
   newGuid(): string;
   now(): Date;
@@ -49,24 +55,12 @@ export interface UploadRequest {
   access: Access;
 }
 
-/** Big enough for a 3-hour 1080p video; S3 allows 10,000 parts per upload. */
-export const MAX_FILE_BYTES = 50 * 1024 ** 3;
-const MIN_PART = 16 * 1024 ** 2;
-const MAX_PARTS = 10_000;
-/** Part URLs are signed in batches as the upload goes, so each can expire quickly. */
-export const SIGN_BATCH = 100;
-
 const BUNDLE_ID = /^\d{14}-[0-9a-f]{6}$/;
 const EPISODE_ID = /^[0-9a-f]{16}$/;
 /** The publisher's own files; a browser upload must never write them. */
 const RESERVED = new Set(['episode.json', PROCESSED_FILE]);
 
 const FORBIDDEN = error(403, "You can't upload to this show");
-
-export function partSize(bytes: number): number {
-  const min = Math.ceil(bytes / MAX_PARTS / (1024 * 1024)) * 1024 * 1024;
-  return Math.max(MIN_PART, min);
-}
 
 const CreateBody = z.object({
   files: z
@@ -79,23 +73,6 @@ const CreateBody = z.object({
     .max(10),
   /** Set to update this existing episode: media may then be left out. */
   episodeId: z.string().regex(EPISODE_ID).optional(),
-});
-
-const SignBody = z.object({
-  name: z.string().min(1),
-  uploadId: z.string().min(1),
-  parts: z.array(z.number().int().min(1).max(MAX_PARTS)).min(1).max(SIGN_BATCH),
-});
-
-const FileDoneBody = z.object({
-  name: z.string().min(1),
-  uploadId: z.string().min(1),
-  parts: z
-    .array(
-      z.object({ partNumber: z.number().int().min(1).max(MAX_PARTS), etag: z.string().min(1) }),
-    )
-    .min(1)
-    .max(MAX_PARTS),
 });
 
 /** The form fields. The rest of episode.json is filled in here. */
@@ -131,6 +108,11 @@ function badName(name: string): string | undefined {
 export async function route(deps: UploadDeps, req: UploadRequest): Promise<ApiResponse> {
   const parts = req.path.split('/').filter(Boolean);
   if (req.method === 'GET' && parts.length === 1 && parts[0] === 'me') return me(deps, req.access);
+
+  // A batch of Shorts belongs to a brand, not to a feed, so those routes
+  // check the brand and never look for a show.json.
+  if ((parts[0] === 'brands' || parts[0] === 'shows') && parts[2] === 'shorts')
+    return shortsRoute(deps, req);
 
   if (parts[0] !== 'shows' || (parts[2] !== 'uploads' && parts[2] !== 'catalog'))
     return error(404, 'Not found');
@@ -296,46 +278,26 @@ async function create(deps: UploadDeps, show: string, body: unknown): Promise<Ap
   return { statusCode: 201, body: { bundleId, files } };
 }
 
-/** Writing is over once episode.json is in place; the publisher owns the bundle from then on. */
-async function sealed(deps: UploadDeps, show: string, bundleId: string) {
-  return (await deps.store.head(layout.inboxPrefix(show, bundleId) + 'episode.json')) !== undefined;
+/**
+ * One bundle in progress. Writing is over once episode.json is in place: the
+ * publisher owns the bundle from then on.
+ */
+function transferFor(deps: UploadDeps, show: string, bundleId: string): Transfer {
+  const prefix = layout.inboxPrefix(show, bundleId);
+  return {
+    multipart: deps.multipart,
+    store: deps.store,
+    prefix,
+    badName,
+    sealed: async () => (await deps.store.head(prefix + 'episode.json')) !== undefined,
+  };
 }
 
-async function sign(
-  deps: UploadDeps,
-  show: string,
-  bundleId: string,
-  body: unknown,
-): Promise<ApiResponse> {
-  const input = parse(SignBody, body);
-  if (isResponse(input)) return input;
-  const bad = badName(input.name);
-  if (bad) return error(400, bad);
-  if (await sealed(deps, show, bundleId)) return error(409, 'This upload is already submitted');
-  const key = layout.inboxPrefix(show, bundleId) + input.name;
-  const urls: Record<number, string> = {};
-  for (const n of new Set(input.parts))
-    urls[n] = await deps.multipart.signPart(key, input.uploadId, n);
-  return { statusCode: 200, body: { urls } };
-}
+const sign = (deps: UploadDeps, show: string, bundleId: string, body: unknown) =>
+  signParts(transferFor(deps, show, bundleId), body);
 
-async function fileDone(
-  deps: UploadDeps,
-  show: string,
-  bundleId: string,
-  body: unknown,
-): Promise<ApiResponse> {
-  const input = parse(FileDoneBody, body);
-  if (isResponse(input)) return input;
-  const bad = badName(input.name);
-  if (bad) return error(400, bad);
-  if (await sealed(deps, show, bundleId)) return error(409, 'This upload is already submitted');
-  const key = layout.inboxPrefix(show, bundleId) + input.name;
-  const parts = [...input.parts].sort((a, b) => a.partNumber - b.partNumber);
-  await deps.multipart.complete(key, input.uploadId, parts);
-  const head = await deps.store.head(key);
-  return { statusCode: 200, body: { name: input.name, size: head?.size ?? 0 } };
-}
+const fileDone = (deps: UploadDeps, show: string, bundleId: string, body: unknown) =>
+  completeFile(transferFor(deps, show, bundleId), body);
 
 /**
  * Writes episode.json from the form, which hands the bundle to the

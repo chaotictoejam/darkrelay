@@ -185,6 +185,7 @@ export function shortsPlanner(
   bucket: s3.IBucket,
   table: dynamodb.ITable,
 ) {
+  const worker = `${config.stackPrefix}-shorts`;
   const fn = nodeFunction(scope, 'ShortsPlan', {
     entry: 'shorts/plan-handler.ts',
     functionName: `${config.stackPrefix}-shorts-plan`,
@@ -195,6 +196,7 @@ export function shortsPlanner(
       TIMEZONE: config.shorts.timezone,
       PER_WEEK: String(config.shorts.perWeek),
       LEAD_DAYS: String(config.shorts.leadDays),
+      SHORTS_FUNCTION: worker,
     },
   });
   table.grantReadData(fn);
@@ -202,5 +204,21 @@ export function shortsPlanner(
   // Plans are written next to the content they schedule; approving a plan
   // puts the times on the content records, and nothing else.
   bucket.grantWrite(fn, 'catalog/*');
+  // Moving the slot of a video already on YouTube asks the worker to move it
+  // there now rather than at the next sweep. The ARN is built from the fixed
+  // name because the worker lives in another stack.
+  fn.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [
+        Stack.of(scope).formatArn({
+          service: 'lambda',
+          resource: 'function',
+          resourceName: worker,
+          arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+        }),
+      ],
+    }),
+  );
   return fn;
 }

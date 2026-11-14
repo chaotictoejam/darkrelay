@@ -35,6 +35,13 @@ export interface PlannerDeps {
   query: Query;
   brands(): Promise<BrandConfig[]>;
   episodes(show: string): Promise<EpisodeManifest[]>;
+  /**
+   * Asks the Shorts worker to act on one item now, rather than at the next
+   * hourly sweep. Moving the slot of something already on YouTube is the
+   * case that needs it: the new time is only real once the platform has it.
+   * Where it is missing, the sweep picks the change up within the hour.
+   */
+  syncNow?(event: { brand: string; id: string; outlet: string }): Promise<void>;
   now(): Date;
   log(message: string, data?: Record<string, unknown>): void;
 }
@@ -305,4 +312,82 @@ export async function approvePlan(
     skipped: skipped.length,
   });
   return { plan: approved, applied, skipped };
+}
+
+export interface RescheduleResult {
+  id: string;
+  title: string;
+  publishAt: string;
+  outlet?: string;
+  state?: string;
+  externalId?: string;
+  /** True when the platform is being told the new time now, not at the sweep. */
+  syncing: boolean;
+  warnings: string[];
+}
+
+/**
+ * Moves one item's slot, or releases it now. The same three steps as
+ * `darkrelay shorts schedule`: write the new time on the content record,
+ * leave a publication that is already out alone, and — if the video is
+ * sitting on YouTube waiting for its old time — ask the worker to move it
+ * there straight away instead of waiting for the sweep.
+ *
+ * An item with no slot gets one here, which is how something the planner
+ * skipped is scheduled by hand.
+ */
+export async function rescheduleContent(
+  deps: PlannerDeps,
+  brandSlug: string,
+  id: string,
+  at: Date,
+): Promise<RescheduleResult> {
+  const now = deps.now();
+  const key = layout.contentItem(brandSlug, id);
+  const raw = await deps.store.getText(key);
+  if (raw === undefined) throw new Error(`No content "${id}" for ${brandSlug}`);
+  const item = JSON.parse(raw) as ContentItem;
+  const publishAt = at.toISOString();
+  const warnings: string[] = [];
+
+  const updated: ContentItem = {
+    ...item,
+    publishAt,
+    // A publication already out keeps its time: that release happened, and
+    // a schedule cannot restate a fact about the world.
+    publications: item.publications.map((p) =>
+      p.state === 'published' ? p : { ...p, publishAt, updatedAt: now.toISOString() },
+    ),
+    updatedAt: now.toISOString(),
+  };
+  await deps.store.put(key, JSON.stringify(updated, null, 2), { contentType: 'application/json' });
+
+  const publication = updated.publications[0];
+  if (publication?.state === 'published') {
+    warnings.push(
+      'This one is already public on YouTube. Its slot here is updated, but the video stays where it is.',
+    );
+  }
+  // Uploaded and waiting: the platform is holding the old time, so move it.
+  const move =
+    publication !== undefined &&
+    publication.state !== 'published' &&
+    publication.externalId !== undefined;
+  if (move && deps.syncNow) {
+    await deps.syncNow({ brand: brandSlug, id, outlet: publication.outlet });
+  } else if (move) {
+    warnings.push('YouTube is moved to the new time by the next hourly sweep.');
+  }
+
+  deps.log('Rescheduled content', { brand: brandSlug, id, publishAt, moved: move });
+  return {
+    id,
+    title: updated.title,
+    publishAt,
+    outlet: publication?.outlet,
+    state: publication?.state,
+    externalId: publication?.externalId,
+    syncing: move && deps.syncNow !== undefined,
+    warnings,
+  };
 }

@@ -126,6 +126,10 @@ export class DashboardStack extends Stack {
     mediaBucket.grantRead(uploads, 'inbox-status/*');
     mediaBucket.grantRead(uploads, 'catalog/*/show.json');
     mediaBucket.grantRead(uploads, 'catalog/*/episodes/*');
+    // A Shorts batch is checked against the brand's outlets before its
+    // manifest is written. Reading brand.json is all that needs: the content
+    // records are written by the ingest, not from the browser.
+    mediaBucket.grantRead(uploads, 'catalog/*/brand.json');
     uploads.addToRolePolicy(
       new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [mediaBucket.bucketArn] }),
     );
@@ -269,6 +273,14 @@ export class DashboardStack extends Stack {
       ['/shows/{show}/uploads/{bundleId}/{action}', apigw.HttpMethod.POST],
       ['/shows/{show}/catalog', apigw.HttpMethod.GET],
       ['/shows/{show}/catalog/{episodeId}', apigw.HttpMethod.GET],
+      // A batch of Shorts belongs to a brand, not to a feed: a brand with
+      // only a channel has no show.json to upload against. These are more
+      // specific than `/brands/{proxy+}`, so they reach this Lambda and not
+      // the reader.
+      ['/brands/{brand}/shorts', apigw.HttpMethod.GET],
+      ['/brands/{brand}/shorts', apigw.HttpMethod.POST],
+      ['/brands/{brand}/shorts/{batchId}', apigw.HttpMethod.GET],
+      ['/brands/{brand}/shorts/{batchId}/{action}', apigw.HttpMethod.POST],
     ] as const) {
       api.addRoutes({ path, methods: [method], integration: upload, authorizer });
     }

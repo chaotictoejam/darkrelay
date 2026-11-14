@@ -321,6 +321,44 @@ export interface EpisodeDetails {
   youtube?: { videoId: string };
 }
 
+/** What the Shorts upload form opens with: where a clip can go, and what it came from. */
+export interface ShortsFormContext {
+  brand: string;
+  title: string;
+  timezone?: string;
+  outlets: { id: string; label: string }[];
+  episodes: { episodeId: string; title: string; pubDate: string }[];
+  maxFiles: number;
+}
+
+export interface CreateBatchResponse {
+  batchId: string;
+  files: { name: string; uploadId: string; partSize: number; partCount: number }[];
+}
+
+/** The ingest's verdict on a batch, or where the upload has got to. */
+export interface BatchStatus {
+  batchId: string;
+  brand?: string;
+  status: 'uploading' | 'queued' | 'ingested' | 'rejected';
+  outlet?: string;
+  items?: { id: string; title: string; publishAt?: string }[];
+  errors?: string[];
+}
+
+/** What came of moving one item's slot. */
+export interface RescheduleResponse {
+  id: string;
+  title: string;
+  publishAt: string;
+  outlet?: string;
+  state?: string;
+  externalId?: string;
+  /** The platform is being told the new time now, not at the next sweep. */
+  syncing: boolean;
+  warnings: string[];
+}
+
 export async function get<T>(config: RuntimeConfig, path: string): Promise<T> {
   return request<T>(config, 'GET', path);
 }

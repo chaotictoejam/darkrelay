@@ -5,6 +5,7 @@ import {
   layout,
   type VideoFormat,
 } from '@darkrelay/core';
+import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { queryAll } from '../analytics/dynamo';
 import { listBrands } from '../lib/brands';
@@ -23,6 +24,9 @@ import { route } from './schedule-api';
 
 const store = new S3Store(process.env['MEDIA_BUCKET']!);
 const table = process.env['TABLE_NAME']!;
+/** The Shorts worker, for moving a release time on the platform right away. */
+const shortsFunction = process.env['SHORTS_FUNCTION'];
+const lambda = new LambdaClient({});
 
 /** Deployment defaults. A request may override any of them. */
 const number = (name: string) => {
@@ -76,6 +80,19 @@ const deps: PlannerDeps = {
     }
     return episodes;
   },
+  // Without the worker's name this is left out, and the hourly sweep moves
+  // the release time instead.
+  syncNow: shortsFunction
+    ? async (event) => {
+        await lambda.send(
+          new InvokeCommand({
+            FunctionName: shortsFunction,
+            InvocationType: 'Event',
+            Payload: new TextEncoder().encode(JSON.stringify(event)),
+          }),
+        );
+      }
+    : undefined,
   now: () => new Date(),
   log,
 };

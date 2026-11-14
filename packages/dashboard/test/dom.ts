@@ -34,6 +34,8 @@ export function createElement(tag: string): Node {
       node.handlers = { ...(node.handlers ?? {}), [name]: fn };
     },
     classList: { add: () => {}, remove: () => {} },
+    focus: () => {},
+    remove: () => {},
     createTHead: () => push(node, createElement('thead')),
     createTBody: () => push(node, createElement('tbody')),
     insertRow: () => push(node, createElement('tr')),

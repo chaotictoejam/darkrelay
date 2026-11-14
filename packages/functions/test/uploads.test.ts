@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EpisodeInput, accessFromGroups, episodeId, layout, type Access } from '@darkrelay/core';
 import { MAX_FILE_BYTES, partSize, route, type UploadDeps } from '../src/uploads/api';
+import { loadBrand } from '../src/lib/brands';
 import { MemoryStore } from './memory-store';
 
 const BUNDLE = '20261017120000-abcdef';
@@ -34,6 +35,7 @@ beforeEach(() => {
       },
     },
     listCatalog: async () => ['cc', 'dd'],
+    loadBrand: (slug) => loadBrand(store, slug),
     newBundleId: () => BUNDLE,
     newGuid: () => 'guid-1',
     now: () => NOW,

@@ -34,6 +34,7 @@ import {
 } from './ui';
 import { iconEditor } from './brand-icon';
 import { calendarView, pendingContent, slotsView } from './schedule';
+import { shortsUploadView } from './shorts-upload';
 import { editView, manageView, uploadView } from './upload';
 
 const app = document.getElementById('app')!;
@@ -139,14 +140,22 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
           title,
         );
       }
-      if (!roles.upload.some((s) => s.show === brand)) return;
+      // Shorts go to a channel, so they follow `manage`: a brand with no
+      // feed has no episode to upload and can still have a batch of clips.
       const actions = el('div', undefined, 'actions');
-      const manage = link(`#/manage/${brand}`, 'Manage episodes');
-      manage.className = 'button secondary';
-      const up = link(`#/upload/${brand}`, 'Upload episode');
-      up.className = 'button';
-      actions.append(manage, up);
-      heading.append(actions);
+      if (canManage(roles, brand)) {
+        const shorts = link(`#/shorts/${brand}`, 'Upload Shorts');
+        shorts.className = 'button secondary';
+        actions.append(shorts);
+      }
+      if (roles.upload.some((s) => s.show === brand)) {
+        const manage = link(`#/manage/${brand}`, 'Manage episodes');
+        manage.className = 'button secondary';
+        const up = link(`#/upload/${brand}`, 'Upload episode');
+        up.className = 'button';
+        actions.append(manage, up);
+      }
+      if (actions.children.length) heading.append(actions);
     })
     .catch(() => {});
 
@@ -257,7 +266,7 @@ async function episodeView(config: RuntimeConfig, brand: string, id: string, day
 /** Which brand the current route is about, for the switcher's current state. */
 function currentBrand(parts: string[]): string | undefined {
   if (parts[0] === 's' || parts[0] === 'b') return parts[1];
-  if (parts[0] === 'upload' || parts[0] === 'manage') return parts[1];
+  if (parts[0] === 'upload' || parts[0] === 'manage' || parts[0] === 'shorts') return parts[1];
   if (parts[0] === 'edit') return parts[1];
   return undefined;
 }
@@ -271,6 +280,7 @@ async function render(config: RuntimeConfig) {
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'slots')
       await slotsView(app, config, parts[1], params.get('plan') ?? undefined);
     else if (parts[0] === 'upload') await uploadView(app, config, parts[1]);
+    else if (parts[0] === 'shorts') await shortsUploadView(app, config, parts[1]);
     else if (parts[0] === 'manage' && parts[1]) await manageView(app, config, parts[1]);
     else if (parts[0] === 'edit' && parts[1] && parts[2])
       await editView(app, config, parts[1], parts[2]);

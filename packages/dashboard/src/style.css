@@ -877,3 +877,100 @@ table.heat tbody th {
   display: inline-block;
   background: var(--series-1);
 }
+
+/* A batch of Shorts: one block per clip, so a long form still reads as rows. */
+.clip-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 1rem;
+}
+.clip {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: var(--surface-0);
+}
+.clip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.clip-head .file-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.clip-head .link-button {
+  margin-left: auto;
+}
+.clip-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 0.75rem;
+}
+/* The title and the description earn the full width; the rest pack in. */
+.clip-fields > .field:nth-child(-n + 2) {
+  grid-column: 1 / -1;
+}
+.batch-items {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.batch-items li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* Moving a slot: closed until asked for, so a list of them stays a list. */
+button.link-button {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--series-1);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.slot-editor {
+  margin-top: 0.3rem;
+}
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.3rem 0;
+}
+.slot-row input[type='datetime-local'] {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+}
+button.primary.small,
+button.secondary.small {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8125rem;
+}
+button.secondary.small {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--hairline);
+}
+.slot-panel p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+}
