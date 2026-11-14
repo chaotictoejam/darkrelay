@@ -271,8 +271,10 @@ function currentBrand(parts: string[]): string | undefined {
   return undefined;
 }
 
-async function render(config: RuntimeConfig) {
+export async function render(config: RuntimeConfig) {
+  const hash = location.hash;
   const { parts, days, params } = parseHash();
+  document.title = 'DarkRelay';
   app.classList.add('loading');
   renderSwitcher(config, currentBrand(parts)).catch(() => {});
   try {
@@ -293,6 +295,10 @@ async function render(config: RuntimeConfig) {
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1])
       await brandView(config, parts[1], days);
     else await brandList(config);
+    if (parts.length && location.hash === hash) {
+      const title = app.querySelector('h1')?.textContent?.trim();
+      if (title) document.title = `${title} · DarkRelay`;
+    }
   } catch (err) {
     app.replaceChildren(el('p', err instanceof Error ? err.message : String(err), 'error'));
   } finally {
