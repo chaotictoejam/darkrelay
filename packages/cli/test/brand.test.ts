@@ -3,7 +3,7 @@ import { scoreSlots } from '@darkrelay/core';
 import { dayList, heatmapLines, hourList } from '../src/commands/plan';
 import { manyBrands, oneBrand } from '../src/brands';
 import { ShortsManifest } from '@darkrelay/core';
-import { buildOutlet, catalogEntries, iconKey, planMigration } from '../src/commands/brand';
+import { buildOutlet, catalogEntries, planMigration } from '../src/commands/brand';
 import { planBatch } from '../src/commands/shorts';
 
 const NOW = new Date('2026-11-12T10:00:00Z');
@@ -123,16 +123,6 @@ describe('buildOutlet', () => {
     expect(() => buildOutlet('cc', { kind: 'rss', id: 'Not An Id' }, NOW)).toThrow(
       /Invalid outlet/,
     );
-  });
-});
-
-describe('iconKey', () => {
-  it('addresses the icon by its content, so a replacement is never cached', () => {
-    const a = iconKey('cc', new Uint8Array([1, 2, 3]), 'icon.png');
-    const b = iconKey('cc', new Uint8Array([4, 5, 6]), 'icon.png');
-    expect(a).toMatch(/^cc\/icon-[0-9a-f]{8}\.png$/);
-    expect(a).not.toBe(b);
-    expect(iconKey('cc', new Uint8Array([1]), 'ICON.JPEG')).toMatch(/\.jpg$/);
   });
 });
 

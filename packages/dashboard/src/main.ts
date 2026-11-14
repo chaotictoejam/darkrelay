@@ -1,4 +1,5 @@
 import {
+  canManage,
   get,
   type BrandSummary,
   type EpisodeResponse,
@@ -31,6 +32,7 @@ import {
   trend,
   videoCards,
 } from './ui';
+import { iconEditor } from './brand-icon';
 import { calendarView, pendingContent, slotsView } from './schedule';
 import { editView, manageView, uploadView } from './upload';
 
@@ -43,6 +45,11 @@ const me = (config: RuntimeConfig) => (mePromise ??= get<MeResponse>(config, '/m
 /** The brand list, fetched once per page load: the switcher needs it everywhere. */
 let brandsPromise: Promise<ShowsResponse> | undefined;
 const brands = (config: RuntimeConfig) => (brandsPromise ??= get<ShowsResponse>(config, '/shows'));
+
+/** After a brand changes, so the switcher and the brand list show it. */
+function forgetBrands() {
+  brandsPromise = undefined;
+}
 
 function parseHash() {
   const [path = '', query = ''] = location.hash.replace(/^#/, '').split('?');
@@ -115,6 +122,23 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
   heading.append(name);
   me(config)
     .then((roles) => {
+      // The icon belongs to the brand, so it follows `manage`: a brand with
+      // no feed has no episodes to upload and its icon is still its own.
+      if (canManage(roles, brand)) {
+        name.replaceChildren(
+          iconEditor(
+            config,
+            { ...data, show: brand },
+            {
+              onUpdated: () => {
+                forgetBrands();
+                renderSwitcher(config, brand).catch(() => {});
+              },
+            },
+          ),
+          title,
+        );
+      }
       if (!roles.upload.some((s) => s.show === brand)) return;
       const actions = el('div', undefined, 'actions');
       const manage = link(`#/manage/${brand}`, 'Manage episodes');

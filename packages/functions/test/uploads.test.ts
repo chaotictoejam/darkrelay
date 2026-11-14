@@ -33,7 +33,7 @@ beforeEach(() => {
         store.seed(key, 'x'.repeat(parts.length));
       },
     },
-    listShows: async () => ['cc', 'dd'],
+    listCatalog: async () => ['cc', 'dd'],
     newBundleId: () => BUNDLE,
     newGuid: () => 'guid-1',
     now: () => NOW,
@@ -90,11 +90,13 @@ describe('roles', () => {
       admin: false,
       view: ['cc'],
       upload: [{ show: 'cc', title: 'Chaotic Commits' }],
+      manage: ['cc'],
     });
     expect((await call('GET', '/me', undefined, accessFromGroups(['viewer:cc']))).body).toEqual({
       admin: false,
       view: ['cc'],
       upload: [],
+      manage: [],
     });
     expect((await call('GET', '/me', undefined, accessFromGroups(['admin']))).body).toEqual({
       admin: true,
@@ -103,7 +105,25 @@ describe('roles', () => {
         { show: 'cc', title: 'Chaotic Commits' },
         { show: 'dd', title: 'Dark Dreams' },
       ],
+      manage: ['cc', 'dd'],
     });
+  });
+
+  it('counts a brand with no feed as one to manage, but not one to upload to', async () => {
+    // A YouTube-only brand: a brand.json under catalog/, and no show.json.
+    deps = { ...deps, listCatalog: async () => ['cc', 'dd', 'yt-only'] };
+    const admin = (await call('GET', '/me', undefined, accessFromGroups(['admin']))).body as {
+      upload: { show: string }[];
+      manage: string[];
+    };
+    expect(admin.upload.map((s) => s.show)).toEqual(['cc', 'dd']);
+    expect(admin.manage).toEqual(['cc', 'dd', 'yt-only']);
+
+    // An uploader for it has it from their own role, with no listing at all.
+    const uploader = (await call('GET', '/me', undefined, accessFromGroups(['uploader:yt-only'])))
+      .body as { upload: unknown[]; manage: string[] };
+    expect(uploader.upload).toEqual([]);
+    expect(uploader.manage).toEqual(['yt-only']);
   });
 });
 

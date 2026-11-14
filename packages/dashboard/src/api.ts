@@ -106,6 +106,13 @@ export interface BrandSummary {
   outlets?: Outlet[];
 }
 
+/** Where a brand's new icon landed, after the API stored it. */
+export interface BrandIconResponse {
+  brand: string;
+  iconKey: string;
+  iconUrl?: string;
+}
+
 export interface ShowsResponse {
   shows: BrandSummary[];
   brands?: BrandSummary[];
@@ -250,7 +257,15 @@ export interface ApprovalResponse {
 export interface MeResponse {
   admin: boolean;
   view: string[] | null;
+  /** Shows an episode can be uploaded to: a brand with no feed is not one. */
   upload: { show: string; title: string }[];
+  /** Brands whose own settings — the icon — the user may change. */
+  manage?: string[];
+}
+
+/** Brands the user may change. Older deployments send no `manage`. */
+export function canManage(roles: MeResponse, brand: string): boolean {
+  return (roles.manage ?? roles.upload.map((s) => s.show)).includes(brand);
 }
 
 export interface CreateUploadResponse {

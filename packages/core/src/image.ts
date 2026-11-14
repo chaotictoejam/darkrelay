@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { layout } from './layout';
+
 /**
  * Enough image parsing to check artwork before uploading it: the pixel size
  * from a PNG or JPEG header, read without decoding the image. Podcast apps,
@@ -89,4 +92,25 @@ export function checkIconImage(bytes: Uint8Array, file = 'image'): string[] {
     problems.push(`${file} is ${info.width}x${info.height}; ${ICON_MAX_PX}px is the limit`);
   }
   return problems;
+}
+
+/** The media type for an icon's actual bytes, whatever the file was called. */
+export function iconContentType(type: ImageInfo['type']): string {
+  return type === 'png' ? 'image/png' : 'image/jpeg';
+}
+
+/**
+ * Icons are small and change rarely, and a replaced one gets a new key, so a
+ * day in a cache costs nothing and no stale icon can stick.
+ */
+export const BRAND_ICON_CACHE_CONTROL = 'public, max-age=86400';
+
+/**
+ * Content-addressed icon key, so a replaced icon is never served from cache.
+ * The extension comes from the bytes rather than the file name: an icon
+ * uploaded through the dashboard is named by whatever the browser sent.
+ */
+export function brandIconKey(slug: string, bytes: Uint8Array, type: ImageInfo['type']): string {
+  const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
+  return layout.brandIcon(slug, hash, type === 'png' ? 'png' : 'jpg');
 }
