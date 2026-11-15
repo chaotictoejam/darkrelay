@@ -172,7 +172,7 @@ describe('newBundleId', () => {
 });
 
 describe('analytics dates', async () => {
-  const { datesFor } = await import('../src/commands/analytics');
+  const { datesFor, runAnalytics } = await import('../src/commands/analytics');
   const now = new Date('2026-10-12T05:00:00Z');
   it('defaults to yesterday', () => expect(datesFor({}, now)).toEqual(['2026-10-11']));
   it('expands a range up to yesterday', () =>
@@ -181,5 +181,25 @@ describe('analytics dates', async () => {
       '2026-10-10',
       '2026-10-11',
     ]));
+  it('keeps a single day when from and to are equal', () =>
+    expect(datesFor({ from: '2026-10-10', to: '2026-10-10' }, now)).toEqual(['2026-10-10']));
+  it('rejects a backwards range naming both dates', () =>
+    expect(() => datesFor({ from: '2026-10-11', to: '2026-10-09' }, now)).toThrow(
+      /--from 2026-10-11 is after --to 2026-10-09/,
+    ));
+  it('rejects a future --from against the default --to without inventing a flag', () => {
+    expect(() => datesFor({ from: '2026-10-20' }, now)).toThrow(
+      /--from 2026-10-20 is after the default --to \(yesterday, 2026-10-11\)/,
+    );
+    expect(() => datesFor({ from: '2026-10-20' }, now)).not.toThrow(/after --to 2026-10-11/);
+  });
   it('rejects bad dates', () => expect(() => datesFor({ date: ['10/11/2026'] }, now)).toThrow());
+  it('fails a backwards range before the YouTube path can send undefined dates', async () => {
+    await expect(
+      runAnalytics(
+        { from: '2026-10-11', to: '2026-10-09', source: 'youtube' },
+        { stackPrefix: 'DarkRelay' },
+      ),
+    ).rejects.toThrow(/2026-10-11[\s\S]*2026-10-09/);
+  });
 });

@@ -23,9 +23,19 @@ export function datesFor(
   };
   if (flags.date?.length) return flags.date.map(valid);
   if (flags.from) {
-    const to = valid(flags.to ?? new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10));
+    const from = valid(flags.from);
+    const defaultTo = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
+    const to = valid(flags.to ?? defaultTo);
+    if (Date.parse(from) > Date.parse(to)) {
+      // Only cite --to when the user passed it; otherwise name the default they hit.
+      throw new Error(
+        flags.to
+          ? `--from ${from} is after --to ${to}`
+          : `--from ${from} is after the default --to (yesterday, ${to})`,
+      );
+    }
     const out: string[] = [];
-    for (let t = Date.parse(valid(flags.from)); t <= Date.parse(to); t += 86_400_000) {
+    for (let t = Date.parse(from); t <= Date.parse(to); t += 86_400_000) {
       out.push(new Date(t).toISOString().slice(0, 10));
     }
     if (out.length > 400) throw new Error('At most 400 days per run');
