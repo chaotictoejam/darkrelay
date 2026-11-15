@@ -685,6 +685,90 @@ tr.pending.failed td:first-child {
   font-size: 0.8125rem;
 }
 
+/* ---- The brand summary: the schedule box and the outlet tiles ---- */
+
+.sched {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sched-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.sched-head .stat-value {
+  font-size: 2.4rem;
+  line-height: 1.1;
+}
+.sched .entries {
+  border-top: 1px solid var(--hairline);
+  padding-top: 0.25rem;
+}
+.sched .entry-time {
+  flex: 0 0 9rem;
+  font-size: 0.875rem;
+}
+.sched p {
+  margin: 0;
+}
+.sched .actions {
+  margin: 0;
+}
+
+.outlets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.outlet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-0);
+  min-width: 0;
+}
+.outlet-kind {
+  align-self: flex-start;
+  margin-bottom: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.outlet-kind.youtube {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.outlet-kind.rss,
+.outlet-kind.spotify,
+.outlet-kind.apple {
+  color: var(--series-1);
+  border-color: color-mix(in srgb, var(--series-1) 35%, transparent);
+}
+.outlet-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.outlet .stat-value {
+  font-size: 1.6rem;
+}
+
+@media (max-width: 560px) {
+  .sched .entry-time {
+    flex-basis: 7rem;
+  }
+}
+
 /* Shorts against long-form, and other two-sided splits. */
 .splits {
   display: grid;

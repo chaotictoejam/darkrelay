@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import {
   canManage,
   get,
@@ -8,8 +9,8 @@ import {
   type ShowsResponse,
 } from './api';
 import { completeSignIn, currentToken, signIn, signOut, type RuntimeConfig } from './auth';
-import { pageTitle, shortDate, slotTime } from './format';
-import { outletView, videoView } from './outlets';
+import { pageTitle, shortDate } from './format';
+import { outletView, podcastView, videoView } from './outlets';
 import {
   RANGES,
   brandIcon,
@@ -17,14 +18,18 @@ import {
   breakdowns,
   card,
   countFormats,
-  countPending,
+  countScheduled,
   crawlerNote,
   el,
   link,
+  outletRows,
   outletsCard,
+  outletsSummary,
   rangeControl,
   rangeLabel,
   rangeQuery,
+  scheduleNotes,
+  scheduledCard,
   scroller,
   serverNote,
   stat,
@@ -41,11 +46,12 @@ const app = document.getElementById('app')!;
 
 /** The user's roles, fetched once per page load. */
 let mePromise: Promise<MeResponse> | undefined;
-const me = (config: RuntimeConfig) => (mePromise ??= get<MeResponse>(config, '/me'));
+const me = (config: RuntimeConfig) => (mePromise ??= get<MeResponse>(config, apiPath('me')));
 
 /** The brand list, fetched once per page load: the switcher needs it everywhere. */
 let brandsPromise: Promise<ShowsResponse> | undefined;
-const brands = (config: RuntimeConfig) => (brandsPromise ??= get<ShowsResponse>(config, '/shows'));
+const brands = (config: RuntimeConfig) =>
+  (brandsPromise ??= get<ShowsResponse>(config, apiPath('brands')));
 
 /** After a brand changes, so the switcher and the brand list show it. */
 function forgetBrands() {
@@ -113,7 +119,7 @@ async function brandList(config: RuntimeConfig) {
 /** A brand page: every outlet summed, with its episodes and its videos. */
 async function brandView(config: RuntimeConfig, brand: string, days: number) {
   const [data, scheduled] = await Promise.all([
-    get<ShowResponse>(config, `/brands/${brand}?${rangeQuery(days)}`),
+    get<ShowResponse>(config, `${apiPath('brand', { brand })}?${rangeQuery(days)}`),
     pendingContent(config, brand),
   ]);
   const heading = el('div', undefined, 'heading');
@@ -159,6 +165,11 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
     })
     .catch(() => {});
 
+  const videos = data.videos ?? [];
+  // Counted from both sources: what DarkRelay scheduled, and what the
+  // channel is holding back whether DarkRelay scheduled it or not. Only
+  // what is still ahead of the clock counts as scheduled.
+  const upcoming = countScheduled(videos, scheduled);
   const stats = el('div', undefined, 'stats');
   stats.append(
     stat(
@@ -169,19 +180,9 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
     ),
     stat('Episodes', data.episodes.length),
   );
-  const formats = countFormats(data.videos ?? []);
+  const formats = countFormats(videos);
   if (formats.long) stats.append(stat('Videos', formats.long));
   if (formats.shorts) stats.append(stat('Shorts', formats.shorts));
-  // Counted from both sources: what DarkRelay scheduled, and what the
-  // channel is holding back whether DarkRelay scheduled it or not.
-  const pending = countPending(data.videos ?? [], scheduled);
-  if (pending.count) {
-    stats.append(
-      stat('Scheduled', pending.count, [
-        pending.next ? `Next: ${slotTime(pending.next)}` : undefined,
-      ]),
-    );
-  }
   if (data.totals.watchSeconds) stats.append(timeStat(data.totals.watchSeconds));
 
   const table = el('table', undefined, 'episodes');
@@ -208,15 +209,19 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
     }
   }
 
-  const sections: HTMLElement[] = [
-    heading,
-    rangeControl(`#/s/${brand}`, days),
-    stats,
-    trend(data),
-    outletsCard(data, brand),
-    breakdowns(data),
-  ];
-  const videos = data.videos ?? [];
+  const outlets = outletRows(data);
+  const channels = outlets.filter((o) => o.kind === 'youtube');
+  const sections: HTMLElement[] = [heading, rangeControl(`#/s/${brand}`, days), stats];
+  // A brand with no channel has nothing on the schedule — its episodes are
+  // released by the feed — so the box only appears where it means something:
+  // a channel to publish to, or something already waiting whatever it is.
+  if (channels.length || upcoming.items.length || scheduleNotes(upcoming).length) {
+    sections.push(scheduledCard(upcoming));
+  }
+  // Podcast apps, countries and devices are counted from podcast downloads
+  // alone, so they live on the podcast outlet's own page, which the Outlets
+  // box links to, rather than on a page that is both outlets at once.
+  sections.push(outletsSummary(data, brand, days), trend(data));
   if (data.episodes.length || (!videos.length && !scheduled.length)) {
     sections.push(
       card(
@@ -226,7 +231,10 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
       ),
     );
   }
-  sections.push(...videoCards(brand, videos, days, scheduled));
+  // Video by video is the channel's own page, which the outlet box links to.
+  // Where there is no channel to link to, the tables stay here rather than
+  // leaving videos with nowhere to be read.
+  if (!channels.length) sections.push(...videoCards(brand, videos, days, scheduled));
   app.replaceChildren(...sections);
   return data.title ?? brand;
 }
@@ -234,7 +242,7 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
 async function episodeView(config: RuntimeConfig, brand: string, id: string, days: number) {
   const data = await get<EpisodeResponse>(
     config,
-    `/brands/${brand}/episodes/${id}?${rangeQuery(days)}`,
+    `${apiPath('episode', { brand, episodeId: id })}?${rangeQuery(days)}`,
   );
   const e = data.episode;
   const back = link(`#/s/${brand}?days=${days}`, '← All episodes');
@@ -263,6 +271,21 @@ async function episodeView(config: RuntimeConfig, brand: string, id: string, day
     breakdowns(data),
   );
   return e.title;
+}
+
+/**
+ * An outlet's page, chosen by what the outlet is: a channel's own numbers
+ * come from YouTube, a feed's from the brand's downloads. The kind is read
+ * from the brand list, which is already loaded; an outlet nobody lists is
+ * treated as a channel, which is what every outlet page used to be.
+ */
+async function outletPage(config: RuntimeConfig, brand: string, outletId: string, days: number) {
+  const kind = await brands(config)
+    .then((data) => data.shows.find((s) => s.show === brand))
+    .then((show) => show?.outlets?.find((o) => o.id === outletId)?.kind)
+    .catch(() => undefined);
+  if (kind && kind !== 'youtube') return podcastView(app, config, brand, outletId, days);
+  return outletView(app, config, brand, outletId, days);
 }
 
 /** Which brand the current route is about, for the switcher's current state. */
@@ -299,7 +322,7 @@ async function render(config: RuntimeConfig) {
     } else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'e' && parts[3])
       title = await episodeView(config, parts[1], parts[3], days);
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'o' && parts[3])
-      title = await outletView(app, config, parts[1], parts[3], days);
+      title = await outletPage(config, parts[1], parts[3], days);
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'v' && parts[3])
       title = await videoView(app, config, parts[1], parts[3], days);
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1])

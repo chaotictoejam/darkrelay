@@ -141,7 +141,7 @@ describe('dayLabel', () => {
 describe('stateNote', () => {
   it('says where each item stands without jargon', () => {
     expect(stateNote(entry({ state: 'published' }))).toBe('live');
-    expect(stateNote(entry({ state: 'scheduled' }))).toBe('uploaded, waiting for its time');
+    expect(stateNote(entry({ state: 'scheduled' }))).toBe('scheduled on YouTube');
     expect(stateNote(entry({ state: 'uploading' }))).toBe('uploading now');
     expect(stateNote(entry({ state: 'planned' }))).toBe('not uploaded yet');
     expect(stateNote(entry())).toBe('not uploaded yet');

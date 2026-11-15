@@ -2,9 +2,18 @@
 
 <!-- What this changes and the problem it solves. Link the issue: Closes #123 -->
 
+## AI use
+
+<!-- Required. Say "None", or name the tool(s) and what they did, e.g. "Claude Code wrote the tests; I wrote the fix". Undisclosed AI use gets the PR closed. See CONTRIBUTING.md#using-ai-tools -->
+
+**Tools used:**
+
+**Human review:** <!-- Required. Who read and ran this change, and can explain it in review? A PR with no human who understands it is closed, disclosed or not. -->
+
 ## Checklist
 
 - [ ] Tests added or updated
+- [ ] Any AI use is disclosed above, and I (a human) have read and run every change and can explain it in review
 - [ ] `npm run format`, `npm run typecheck` and `npm test` pass
 - [ ] README or `docs/` updated if a command, config field or cost changed
 - [ ] No change to public feed URLs, `podcast:guid` or episode `<guid>`s

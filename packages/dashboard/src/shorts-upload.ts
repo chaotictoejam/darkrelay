@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import {
   canManage,
   get,
@@ -20,7 +21,7 @@ import {
   titleFromName,
   type ClipInput,
 } from './shorts-plan';
-import { sendAll, setBusy, sleep, type FileJob } from './transfer';
+import { sendAll, setBusy, sleep, type FileJob, type StepPath } from './transfer';
 import { el, field, link } from './ui';
 import { bytes } from './upload-plan';
 
@@ -59,7 +60,7 @@ const read = (clip: ClipRow): ClipInput => ({
 
 /** The brands a Short can be uploaded to: every brand the user may upload to. */
 export async function shortsUploadView(app: HTMLElement, config: RuntimeConfig, brand?: string) {
-  const me = await get<MeResponse>(config, '/me');
+  const me = await get<MeResponse>(config, apiPath('me'));
   const slugs = me.manage ?? me.upload.map((s) => s.show);
   if (!slugs.length) {
     app.replaceChildren(
@@ -73,7 +74,7 @@ export async function shortsUploadView(app: HTMLElement, config: RuntimeConfig, 
     return;
   }
   if (!brand) {
-    const { shows } = await get<ShowsResponse>(config, '/shows');
+    const { shows } = await get<ShowsResponse>(config, apiPath('brands'));
     const list = el('ul', undefined, 'brands');
     for (const slug of slugs) {
       const li = el('li');
@@ -91,7 +92,7 @@ export async function shortsUploadView(app: HTMLElement, config: RuntimeConfig, 
     );
     return;
   }
-  const context = await get<ShortsFormContext>(config, `/brands/${brand}/shorts`);
+  const context = await get<ShortsFormContext>(config, apiPath('shortsContext', { brand }));
   batchForm(app, config, context);
 }
 
@@ -290,14 +291,15 @@ function batchForm(app: HTMLElement, config: RuntimeConfig, context: ShortsFormC
 
   const run = async () => {
     const s = state!;
-    const base = `/brands/${brand}/shorts/${s.batchId}`;
+    const step: StepPath = (name) =>
+      apiPath('batchAction', { brand, batchId: s.batchId, action: name });
     setBusy(true);
     retry.hidden = true;
     fields.disabled = true;
     result.replaceChildren();
     try {
-      await sendAll(config, base, s.jobs);
-      await post(config, `${base}/complete`, s.body);
+      await sendAll(config, step, s.jobs);
+      await post(config, step('complete'), s.body);
       setBusy(false);
       // A rejected batch wrote nothing and is sealed: the form comes back for
       // editing, and the next attempt opens a batch of its own.
@@ -342,7 +344,7 @@ function batchForm(app: HTMLElement, config: RuntimeConfig, context: ShortsFormC
     progress.hidden = false;
     fileList.replaceChildren();
     try {
-      const created = await post<CreateBatchResponse>(config, `/brands/${brand}/shorts`, {
+      const created = await post<CreateBatchResponse>(config, apiPath('createBatch', { brand }), {
         files: uploads.map((u) => ({ name: u.name, size: u.file.size })),
       });
       const jobs = uploads.map(({ name, file }): FileJob => {
@@ -387,7 +389,7 @@ async function watch(
   while (out.isConnected && Date.now() - start < 600_000) {
     let status: BatchStatus | undefined;
     try {
-      status = await get<BatchStatus>(config, `/brands/${brand}/shorts/${batchId}`);
+      status = await get<BatchStatus>(config, apiPath('batchStatus', { brand, batchId }));
       out.replaceChildren(statusView(config, brand, status));
       if (status.status === 'rejected') {
         onRejected();

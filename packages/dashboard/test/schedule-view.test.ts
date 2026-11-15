@@ -137,7 +137,7 @@ describe('calendarView', () => {
     expect(shown).toContain('Schedule');
     expect(shown).toContain('Bus factor clip');
     expect(shown).toContain('Tomorrow');
-    expect(shown).toContain('uploaded, waiting for its time');
+    expect(shown).toContain('scheduled on YouTube');
     expect(shown).toContain('Tutorial clip');
     expect(shown).toContain('not uploaded yet');
     // A published item links out to the video itself.
