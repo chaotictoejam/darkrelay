@@ -38,7 +38,9 @@ export function stateNote(item: { state?: string; error?: string }): string {
     case 'published':
       return 'live';
     case 'scheduled':
-      return 'uploaded, waiting for its time';
+      // The release time is set on YouTube, not merely wished for here:
+      // "waiting for its time" read as though nobody had chosen one yet.
+      return 'scheduled on YouTube';
     case 'uploading':
       return 'uploading now';
     case 'failed':
@@ -63,6 +65,27 @@ export function daysBetween(from: string, to: string): string[] {
     out.push(new Date(t).toISOString().slice(0, 10));
   }
   return out;
+}
+
+/**
+ * Where a series really ends. A day nobody has counted yet has no row at all,
+ * and filling it in as a zero draws a cliff to the floor: it reads as the day
+ * the audience vanished, when it is only the day the night's run has not
+ * reached. So the line stops at the last day there is an answer for.
+ *
+ * The range's own end is kept where there is nothing recorded in it at all,
+ * or nothing since `from`, because an empty chart says less than a flat one.
+ */
+export function recordedTo<T extends { date: string }>(
+  rows: T[],
+  to: string,
+  from?: string,
+): string {
+  let last: string | undefined;
+  for (const row of rows) if (!last || row.date > last) last = row.date;
+  if (!last || last >= to) return to;
+  if (from && last < from) return to;
+  return last;
 }
 
 export function fillDays<T extends { date: string }>(
@@ -195,6 +218,7 @@ const FORMATS: Record<string, string> = {
   long: 'Long-form',
   live: 'Live streams',
   other: 'Other',
+  video: 'Video',
 };
 
 export function formatName(format: string): string {
@@ -211,4 +235,28 @@ const OUTLET_KINDS: Record<string, string> = {
 
 export function outletKindName(kind: string): string {
   return OUTLET_KINDS[kind] ?? kind;
+}
+
+/**
+ * What an outlet is, in two or three words, for a summary that has to say
+ * which numbers are YouTube's and which are the podcast's. Spotify and Apple
+ * are podcast platforms, so they say so rather than standing alone and
+ * leaving the reader to know it.
+ */
+const OUTLET_LABELS: Record<string, string> = {
+  rss: 'Podcast',
+  youtube: 'YouTube',
+  spotify: 'Podcast · Spotify',
+  apple: 'Podcast · Apple',
+};
+
+export function outletLabel(kind: string): string {
+  return OUTLET_LABELS[kind] ?? outletKindName(kind);
+}
+
+/** What one play is called on that outlet: a view, a download, a play. */
+export function playsWord(kind: string): string {
+  if (kind === 'youtube') return 'views';
+  if (kind === 'rss') return 'downloads';
+  return 'plays';
 }

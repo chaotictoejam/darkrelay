@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import { post, type BrandIconResponse, type BrandSummary } from './api';
 import type { RuntimeConfig } from './auth';
 import { brandIcon, el } from './ui';
@@ -70,10 +71,14 @@ export function iconEditor(
     input.disabled = true;
     say(`Uploading ${file.name}…`);
     try {
-      const result = await post<BrandIconResponse>(config, `/brands/${brand.show}/icon`, {
-        filename: file.name,
-        data: base64(new Uint8Array(await file.arrayBuffer())),
-      });
+      const result = await post<BrandIconResponse>(
+        config,
+        apiPath('brandIcon', { brand: brand.show }),
+        {
+          filename: file.name,
+          data: base64(new Uint8Array(await file.arrayBuffer())),
+        },
+      );
       // The key is content-addressed, so the new URL is new: nothing has to
       // be cache-busted, and the old icon stays valid wherever it is cached.
       const next = brandIcon(config, { ...brand, ...result }, 36);

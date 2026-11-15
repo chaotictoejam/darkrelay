@@ -9,6 +9,7 @@ import {
   niceTicks,
   outletKindName,
   podcastApps,
+  recordedTo,
   sourceName,
   topEntries,
   trafficSourceName,
@@ -35,6 +36,25 @@ describe('format', () => {
       '2026-10-31',
       '2026-11-01',
     ]);
+  });
+
+  it('ends a series on the last day that was counted, not on today', () => {
+    // The night's run has not reached today, so there is no row for it; a
+    // zero there would draw a cliff to the floor.
+    expect(recordedTo([{ date: '2026-11-12' }, { date: '2026-11-13' }], '2026-11-14')).toBe(
+      '2026-11-13',
+    );
+  });
+
+  it('keeps the range where nothing in it was counted at all', () => {
+    expect(recordedTo([], '2026-11-14')).toBe('2026-11-14');
+    // An episode released after the last counted day: a flat line over its
+    // own days says more than an empty chart.
+    expect(recordedTo([{ date: '2026-11-01' }], '2026-11-14', '2026-11-10')).toBe('2026-11-14');
+  });
+
+  it('keeps the range where the counting is up to date', () => {
+    expect(recordedTo([{ date: '2026-11-14' }], '2026-11-14')).toBe('2026-11-14');
   });
 
   it('picks clean ticks that cover the max', () => {

@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import {
   get,
   post,
@@ -17,7 +18,7 @@ import {
   type PlannedFile,
   type Slot,
 } from './upload-plan';
-import { sendAll, setBusy, sleep, type FileJob as Transfer } from './transfer';
+import { sendAll, setBusy, sleep, type FileJob as Transfer, type StepPath } from './transfer';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) {
   const e = document.createElement(tag);
@@ -141,7 +142,7 @@ async function watch(
   while (out.isConnected && Date.now() - start < 3 * 3600_000) {
     let status: UploadStatus | undefined;
     try {
-      status = await get<UploadStatus>(config, `/shows/${show}/uploads/${bundleId}`);
+      status = await get<UploadStatus>(config, apiPath('uploadStatus', { show, bundleId }));
       out.replaceChildren(statusView(status, show, mode));
       if (status.status === 'published' || status.status === 'rejected') return;
     } catch (e) {
@@ -156,8 +157,8 @@ const STATE_LABEL = { live: 'Live', scheduled: 'Scheduled', hidden: 'Hidden' } a
 /** Every episode of a show, including scheduled and hidden ones, to pick one to edit. */
 export async function manageView(app: HTMLElement, config: RuntimeConfig, show: string) {
   const [me, data] = await Promise.all([
-    get<MeResponse>(config, '/me'),
-    get<CatalogResponse>(config, `/shows/${show}/catalog`),
+    get<MeResponse>(config, apiPath('me')),
+    get<CatalogResponse>(config, apiPath('catalog', { show })),
   ]);
   const title = me.upload.find((s) => s.show === show)?.title ?? show;
   const back = el('a', '← Analytics', 'back');
@@ -188,7 +189,7 @@ export async function manageView(app: HTMLElement, config: RuntimeConfig, show: 
 
 /** The upload form, for shows the user can upload to (checked again server-side). */
 export async function uploadView(app: HTMLElement, config: RuntimeConfig, preset?: string) {
-  const me = await get<MeResponse>(config, '/me');
+  const me = await get<MeResponse>(config, apiPath('me'));
   if (!me.upload.length) {
     app.replaceChildren(
       el('h1', 'Upload episode'),
@@ -210,7 +211,7 @@ export async function editView(
   show: string,
   episodeId: string,
 ) {
-  const episode = await get<EpisodeDetails>(config, `/shows/${show}/catalog/${episodeId}`);
+  const episode = await get<EpisodeDetails>(config, apiPath('episodeDetails', { show, episodeId }));
   episodeForm(app, config, { shows: [{ show, title: show }], preset: show, episode });
 }
 
@@ -451,7 +452,8 @@ function episodeForm(
 
   const run = async () => {
     const s = state!;
-    const base = `/shows/${s.slug}/uploads/${s.bundleId}`;
+    const step: StepPath = (name) =>
+      apiPath('uploadAction', { show: s.slug, bundleId: s.bundleId, action: name });
     const { problems, body } = details(s.duration);
     if (problems.length) return showErrors(problems);
     showErrors([]);
@@ -460,8 +462,8 @@ function episodeForm(
     fields.disabled = true;
     result.replaceChildren();
     try {
-      await sendAll(config, base, s.jobs);
-      await post(config, `${base}/complete`, body);
+      await sendAll(config, step, s.jobs);
+      await post(config, step('complete'), body);
       setBusy(false);
       const mode = !edit ? 'new' : hidden.checked ? 'hidden' : 'edit';
       await watch(config, s.slug, s.bundleId, result, mode);
@@ -515,10 +517,14 @@ function episodeForm(
     progress.hidden = false;
     const slug = show.value;
     try {
-      const created = await post<CreateUploadResponse>(config, `/shows/${slug}/uploads`, {
-        files: plan.files.map((f) => ({ name: f.name, size: f.size })),
-        episodeId: existing?.episodeId,
-      });
+      const created = await post<CreateUploadResponse>(
+        config,
+        apiPath('createUpload', { show: slug }),
+        {
+          files: plan.files.map((f) => ({ name: f.name, size: f.size })),
+          episodeId: existing?.episodeId,
+        },
+      );
       const jobs = plan.files.map((planned, i): FileJob => {
         const row = el('li');
         const bar = el('progress');

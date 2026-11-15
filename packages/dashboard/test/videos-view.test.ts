@@ -27,9 +27,9 @@ vi.mock('../src/api', () => ({
   },
 }));
 
-const { videoCards, countFormats, countPending, rangeQuery } = await import('../src/ui');
+const { videoCards, countFormats, countScheduled, rangeQuery } = await import('../src/ui');
 const { slotTime, shortDate } = await import('../src/format');
-const { outletView, videoView } = await import('../src/outlets');
+const { outletView, podcastView, videoView } = await import('../src/outlets');
 const { pendingContent } = await import('../src/schedule');
 
 const config = { apiUrl: 'https://api.example', mediaUrl: 'https://cdn.example' } as RuntimeConfig;
@@ -209,9 +209,9 @@ describe('videoCards', () => {
   });
 });
 
-describe('countPending', () => {
+describe('countScheduled', () => {
   it('counts both what DarkRelay scheduled and what the channel is holding', () => {
-    const { count, next } = countPending(
+    const { count, next } = countScheduled(
       [
         video(),
         video({ videoId: 'held', privacyStatus: 'private', scheduledAt: '2026-11-19T14:00:00Z' }),
@@ -224,7 +224,7 @@ describe('countPending', () => {
   });
 
   it('counts a video with a content item behind it once', () => {
-    const { count } = countPending(
+    const { count } = countScheduled(
       [video({ videoId: 'abc123', privacyStatus: 'private', scheduledAt: '2026-11-19T14:00:00Z' })],
       [entry({ state: 'scheduled', externalId: 'abc123' })],
       NOW,
@@ -233,7 +233,61 @@ describe('countPending', () => {
   });
 
   it('counts nothing when everything is out', () => {
-    expect(countPending([video()], [], NOW)).toEqual({ count: 0, next: undefined });
+    expect(countScheduled([video()], [], NOW)).toMatchObject({ count: 0, next: undefined });
+  });
+
+  it('leaves out a slot that has already passed, and says so apart', () => {
+    // The schedule route keeps a day of history, so an item that went out
+    // yesterday is still on it; it is not something that is coming.
+    const { count, overdue } = countScheduled(
+      [],
+      [entry({ state: 'scheduled', publishAt: '2026-11-11T23:00:00Z' })],
+      NOW,
+    );
+    expect(count).toBe(0);
+    expect(overdue).toBe(1);
+  });
+
+  it('leaves out private and unlisted videos with no release time', () => {
+    const summary = countScheduled(
+      [
+        video({ videoId: 'p', privacyStatus: 'private', scheduledAt: undefined }),
+        video({ videoId: 'u', privacyStatus: 'unlisted', scheduledAt: undefined }),
+      ],
+      [],
+      NOW,
+    );
+    expect(summary.count).toBe(0);
+    expect(summary.held).toBe(2);
+  });
+
+  it('leaves out an item with no slot chosen yet', () => {
+    const summary = countScheduled([], [entry({ publishAt: undefined })], NOW);
+    expect(summary.count).toBe(0);
+    expect(summary.awaitingSlot).toBe(1);
+  });
+
+  it('leaves out a failed upload, whatever time it was meant to go out', () => {
+    const summary = countScheduled(
+      [],
+      [entry({ state: 'failed', error: 'quotaExceeded', publishAt: '2026-11-20T23:00:00Z' })],
+      NOW,
+    );
+    expect(summary.count).toBe(0);
+    expect(summary.failed).toBe(1);
+  });
+
+  it('orders what is coming soonest first', () => {
+    const summary = countScheduled(
+      [],
+      [
+        entry({ id: 'later', title: 'Later', publishAt: '2026-11-25T23:00:00Z' }),
+        entry({ id: 'soon', title: 'Soon', publishAt: '2026-11-13T23:00:00Z' }),
+      ],
+      NOW,
+    );
+    expect(summary.items.map((i) => i.title)).toEqual(['Soon', 'Later']);
+    expect(summary.next).toBe('2026-11-13T23:00:00Z');
   });
 });
 
@@ -357,6 +411,67 @@ describe('outletView', () => {
   });
 });
 
+describe('podcastView', () => {
+  const brandPage = () => ({
+    show: 'dr',
+    title: 'Dr. Joanne Skiles',
+    from: '2026-08-14',
+    to: '2026-11-12',
+    daily: [],
+    totals: {
+      downloads: 5980,
+      serverDownloads: 424,
+      apps: {},
+      countries: { US: 3200, GB: 748 },
+      devices: { mobile: 3800 },
+    },
+    sources: ['cloudfront'],
+    bySource: [
+      { source: 'cloudfront', plays: 5980, watchSeconds: 0, apps: { 'Apple Podcasts': 2500 } },
+    ],
+    byOutlet: [
+      {
+        id: 'feed',
+        kind: 'rss',
+        name: 'My Show feed',
+        source: 'cloudfront',
+        plays: 5980,
+        watchSeconds: 0,
+        apps: { Overcast: 1000 },
+      },
+    ],
+    outlets: [{ id: 'feed', kind: 'rss', name: 'My Show feed', source: 'cloudfront' }],
+    episodes: [],
+    videos: [],
+  });
+
+  const draw = async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const app = createElement('main');
+    stub.get.set(`/brands/dr?${rangeQuery(90)}`, brandPage());
+    await podcastView(app, config, 'dr', 'feed', 90);
+    vi.useRealTimers();
+    return app;
+  };
+
+  it('is where the podcast breakdowns live, named as the podcast', async () => {
+    const shown = text(await draw());
+    expect(shown).toContain('My Show feed');
+    expect(shown).toContain('Podcast');
+    expect(shown).toContain('Downloads, last 90 days');
+    expect(shown).toContain('Podcast apps');
+    expect(shown).toContain('Countries');
+    expect(shown).toContain('Devices');
+  });
+
+  it('counts the apps of this outlet, not of every podcast source', async () => {
+    const shown = text(await draw());
+    expect(shown).toContain('Overcast');
+    expect(shown).not.toContain('Apple Podcasts');
+  });
+});
+
 describe('videoView', () => {
   const response = (over: Partial<VideoSummary>): VideoResponse => ({
     show: 'dr',
@@ -398,6 +513,12 @@ describe('videoView', () => {
     const shown = await draw({ privacyStatus: 'private', scheduledAt: undefined });
     expect(shown).toContain('Private');
     expect(shown).not.toContain('published');
+  });
+
+  it('leaves out the podcast breakdowns, which a video can never fill', async () => {
+    const shown = await draw({ privacyStatus: 'public' });
+    expect(shown).not.toContain('Podcast apps');
+    expect(shown).not.toContain('Devices');
   });
 
   it('keeps the publish date for a video that is out', async () => {

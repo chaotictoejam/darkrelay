@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import {
   get,
   post,
@@ -80,7 +81,7 @@ export async function pendingContent(
   outlet?: string,
 ): Promise<ScheduleEntry[]> {
   try {
-    const data = await get<ScheduleResponse>(config, '/schedule');
+    const data = await get<ScheduleResponse>(config, apiPath('schedule'));
     return data.upcoming
       .filter(
         (e) =>
@@ -191,7 +192,7 @@ const slotTarget = (entry: ScheduleEntry) => ({
 
 /** The cross-brand calendar: every brand's next few weeks in one column. */
 export async function calendarView(app: HTMLElement, config: RuntimeConfig) {
-  const data = await get<ScheduleResponse>(config, '/schedule');
+  const data = await get<ScheduleResponse>(config, apiPath('schedule'));
   const now = new Date(data.now);
   const mine = new Set(data.brands.filter((b) => b.canSchedule).map((b) => b.brand));
   // A moved slot changes where the item sits in the list, so the page is
@@ -400,8 +401,8 @@ export async function slotsView(
   planId?: string,
 ) {
   const [scores, plans] = await Promise.all([
-    get<SlotScoresResponse>(config, `/schedule/${brand}/slots`),
-    get<PlansResponse>(config, `/schedule/${brand}/plans`),
+    get<SlotScoresResponse>(config, apiPath('slots', { brand })),
+    get<PlansResponse>(config, apiPath('plans', { brand })),
   ]);
 
   const back = link('#/schedule', '← Schedule');
@@ -443,7 +444,7 @@ export async function slotsView(
           try {
             const result = await post<ApprovalResponse>(
               config,
-              `/schedule/${brand}/plans/${chosen.planId}/approve`,
+              apiPath('approvePlan', { brand, planId: chosen.planId }),
               {},
             );
             // Redrawn first, then told: a re-render replaces everything in
@@ -496,7 +497,7 @@ export async function slotsView(
     const whole = (input: HTMLInputElement) =>
       input.value && Number.isInteger(Number(input.value)) ? Number(input.value) : undefined;
     try {
-      const plan = await post<SchedulePlan>(config, `/schedule/${brand}/plans`, {
+      const plan = await post<SchedulePlan>(config, apiPath('createPlan', { brand }), {
         replan: replan.checked || undefined,
         weeks: whole(weeks),
         perWeek: whole(perWeek),
@@ -576,7 +577,7 @@ function adoptCard(config: RuntimeConfig, brand: string): HTMLElement {
     look.disabled = true;
     look.textContent = dryRun ? 'Looking…' : 'Adopting…';
     try {
-      const result = await post<AdoptResponse>(config, `/schedule/${brand}/import`, {
+      const result = await post<AdoptResponse>(config, apiPath('adopt', { brand }), {
         dryRun,
         kind: shortsOnly.checked ? 'short' : undefined,
       });

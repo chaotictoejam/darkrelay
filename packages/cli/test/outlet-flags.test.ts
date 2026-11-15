@@ -13,9 +13,6 @@ describe('outlet flags', () => {
     ['apple', 'feed', '--feed'],
     ['rss', 'url', '--url'],
     ['youtube', 'url', '--url'],
-    ['rss', 'channelId', '--channel-id'],
-    ['spotify', 'channelId', '--channel-id'],
-    ['apple', 'channelId', '--channel-id'],
   ])('rejects %s outlets with %s', (kind, flag, option) => {
     expect(() =>
       buildOutlet(

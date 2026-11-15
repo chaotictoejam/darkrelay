@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import { post, type RescheduleResponse } from './api';
 import type { RuntimeConfig } from './auth';
 import { slotTime } from './format';
@@ -78,7 +79,7 @@ export function slotEditor(
     try {
       const result = await post<RescheduleResponse>(
         config,
-        `/schedule/${target.brand}/content/${target.id}`,
+        apiPath('reschedule', { brand: target.brand, contentId: target.id }),
         { at },
       );
       show([outcome(result), ...result.warnings].join(' '), 'ok');

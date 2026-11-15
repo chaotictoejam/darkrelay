@@ -134,8 +134,6 @@ export function buildOutlet(brandSlug: string, flags: OutletFlags, now = new Dat
     throw new Error(`${kind} outlets do not accept --feed`);
   if (flags.url !== undefined && kind !== 'spotify' && kind !== 'apple')
     throw new Error(`${kind} outlets do not accept --url`);
-  if (flags.channelId !== undefined && kind !== 'youtube')
-    throw new Error(`${kind} outlets do not accept --channel-id`);
   const addedAt = now.toISOString();
   let raw: OutletInput;
   if (kind === 'rss') {
