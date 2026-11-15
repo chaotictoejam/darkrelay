@@ -8,7 +8,7 @@ import {
   type ShowsResponse,
 } from './api';
 import { completeSignIn, currentToken, signIn, signOut, type RuntimeConfig } from './auth';
-import { shortDate, slotTime } from './format';
+import { pageTitle, shortDate, slotTime } from './format';
 import { outletView, videoView } from './outlets';
 import {
   RANGES,
@@ -228,6 +228,7 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
   }
   sections.push(...videoCards(brand, videos, days, scheduled));
   app.replaceChildren(...sections);
+  return data.title ?? brand;
 }
 
 async function episodeView(config: RuntimeConfig, brand: string, id: string, days: number) {
@@ -261,6 +262,7 @@ async function episodeView(config: RuntimeConfig, brand: string, id: string, day
     outletsCard(data, brand),
     breakdowns(data),
   );
+  return e.title;
 }
 
 /** Which brand the current route is about, for the switcher's current state. */
@@ -271,35 +273,41 @@ function currentBrand(parts: string[]): string | undefined {
   return undefined;
 }
 
-export async function render(config: RuntimeConfig) {
+async function render(config: RuntimeConfig) {
   const hash = location.hash;
   const { parts, days, params } = parseHash();
-  document.title = 'DarkRelay';
   app.classList.add('loading');
   renderSwitcher(config, currentBrand(parts)).catch(() => {});
   try {
-    if (parts[0] === 'schedule') await calendarView(app, config);
-    else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'slots')
+    let title: string | undefined;
+    if (parts[0] === 'schedule') {
+      await calendarView(app, config);
+      title = 'Schedule';
+    } else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'slots') {
       await slotsView(app, config, parts[1], params.get('plan') ?? undefined);
-    else if (parts[0] === 'upload') await uploadView(app, config, parts[1]);
-    else if (parts[0] === 'shorts') await shortsUploadView(app, config, parts[1]);
-    else if (parts[0] === 'manage' && parts[1]) await manageView(app, config, parts[1]);
-    else if (parts[0] === 'edit' && parts[1] && parts[2])
+      title = `${parts[1]}: publish times`;
+    } else if (parts[0] === 'upload') {
+      await uploadView(app, config, parts[1]);
+      title = 'Upload episode';
+    } else if (parts[0] === 'shorts') {
+      await shortsUploadView(app, config, parts[1]);
+      title = 'Upload Shorts';
+    } else if (parts[0] === 'manage' && parts[1]) title = await manageView(app, config, parts[1]);
+    else if (parts[0] === 'edit' && parts[1] && parts[2]) {
       await editView(app, config, parts[1], parts[2]);
-    else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'e' && parts[3])
-      await episodeView(config, parts[1], parts[3], days);
+      title = 'Edit episode';
+    } else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'e' && parts[3])
+      title = await episodeView(config, parts[1], parts[3], days);
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'o' && parts[3])
-      await outletView(app, config, parts[1], parts[3], days);
+      title = await outletView(app, config, parts[1], parts[3], days);
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1] && parts[2] === 'v' && parts[3])
-      await videoView(app, config, parts[1], parts[3], days);
+      title = await videoView(app, config, parts[1], parts[3], days);
     else if ((parts[0] === 's' || parts[0] === 'b') && parts[1])
-      await brandView(config, parts[1], days);
+      title = await brandView(config, parts[1], days);
     else await brandList(config);
-    if (parts.length && location.hash === hash) {
-      const title = app.querySelector('h1')?.textContent?.trim();
-      if (title) document.title = `${title} · DarkRelay`;
-    }
+    if (location.hash === hash) document.title = pageTitle(title);
   } catch (err) {
+    if (location.hash === hash) document.title = pageTitle();
     app.replaceChildren(el('p', err instanceof Error ? err.message : String(err), 'error'));
   } finally {
     app.classList.remove('loading');

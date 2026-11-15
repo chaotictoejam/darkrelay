@@ -345,7 +345,7 @@ describe('outletView', () => {
       unscheduled: [],
       plans: [],
     } satisfies ScheduleResponse);
-    await outletView(app, config, 'dr', 'youtube', 90);
+    expect(await outletView(app, config, 'dr', 'youtube', 90)).toBe('Dr. Joanne Skiles');
     const shown = text(app);
     expect(shown).toContain('Videos');
     expect(shown).toContain('Shorts');
@@ -376,7 +376,7 @@ describe('videoView', () => {
     vi.setSystemTime(NOW);
     const app = createElement('main');
     stub.get.set(`/brands/dr/videos/v1?${rangeQuery(7)}`, response(over));
-    await videoView(app, config, 'dr', 'v1', 7);
+    expect(await videoView(app, config, 'dr', 'v1', 7)).toBe(over.title ?? 'The whole episode');
     vi.useRealTimers();
     return text(app);
   };

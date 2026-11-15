@@ -184,6 +184,7 @@ export async function manageView(app: HTMLElement, config: RuntimeConfig, show: 
   const section = el('section', undefined, 'card');
   section.append(data.episodes.length ? wrap : el('p', 'No episodes yet.', 'muted'));
   app.replaceChildren(back, heading, section);
+  return `${title}: episodes`;
 }
 
 /** The upload form, for shows the user can upload to (checked again server-side). */
