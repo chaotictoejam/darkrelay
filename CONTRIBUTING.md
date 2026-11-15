@@ -56,13 +56,15 @@ To check the CDK app without deploying, copy `darkrelay.config.example.json` to 
 AI coding tools are welcome here — DarkRelay is partly built with them — but their use must be disclosed, and you are responsible for what you submit.
 
 - **Say so in the pull request.** If an AI tool wrote or substantially shaped any of the code, tests, docs or the PR description, name the tool and what it did in the **AI use** section of the pull request template. A `Co-Authored-By` trailer in the commits is fine too.
-- **You own what you submit.** Read, run and understand every line before you open the pull request, and be ready to explain it in review. "The AI wrote it" isn't an answer to a review question.
+- **You own what you submit.** Read, run and understand every line before you open the pull request, and be ready to explain it in review. "The AI wrote it" isn't an answer to a review question. Disclosure tells us which tools you used; it doesn't replace this step. Every pull request needs a human who has read and run the change and can answer for it.
 - **Run the checks yourself.** Don't take a tool's word that tests pass. CI runs format, typecheck, tests, feed validation, the dashboard build, `cdk synth` and the transcoder image build; run what you can locally first.
 - **Review comments count too.** Disclose an AI-written review comment the same way, and read the code before you comment on it — an AI summary of a diff is not a review. Issues are the exception: write a bug report or feature request however you like, with whatever tool you like.
 
 The [Principles](#principles) are where generated code goes wrong most often. A tool with no memory of this repo will happily regenerate a `podcast:guid`, rename a feed URL, publish a feed that fails validation, or reach for a service that costs more than everything else here put together. Any of those breaks a real listener's subscription or someone's bill, and none of it shows up in a diff that looks plausible. Check your change against the principles before you open the pull request.
 
 **Pull requests with undisclosed AI use will be closed without review.** If it's discovered after merge, the change may be reverted. Disclosing doesn't count against you: an honest "Claude Code wrote the tests, I wrote the fix" is exactly what we want to see.
+
+**Disclosure is necessary, but it isn't enough on its own.** A pull request that says no person has read, run or understood the change (for example, "written and tested by an agent, no human review claimed") will be closed on the same terms as an undisclosed one. This is about accountability, not about which tools you use: the same applies to code copied from anywhere else. If you're not sure you understand part of a change, say so in the pull request and ask; that's an honest disclosure too, and we'd much rather help with it than find out in review.
 
 ## If you're here for a bounty
 
