@@ -20,7 +20,7 @@ import {
   custom_resources as cr,
 } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
-import { ADMIN_GROUP, metricKeys } from '@darkrelay/core';
+import { ADMIN_GROUP, metricKeys, routesFor, type RouteOwner } from '@darkrelay/core';
 import type { DeploymentConfig } from '../config';
 import { REPO_ROOT, nodeFunction } from '../lambda';
 
@@ -221,81 +221,63 @@ export class DashboardStack extends Stack {
       `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
       { jwtAudience: [client.userPoolClientId] },
     );
-    api.addRoutes({
-      path: '/shows/{proxy+}',
-      methods: [apigw.HttpMethod.GET],
-      integration: new integrations.HttpLambdaIntegration('Read', reader),
-      authorizer,
-    });
-    api.addRoutes({
-      path: '/shows',
-      methods: [apigw.HttpMethod.GET],
-      integration: new integrations.HttpLambdaIntegration('ReadShows', reader),
-      authorizer,
-    });
-    // `/brands` is what the dashboard calls; `/shows` is the same tree under
-    // its older name, kept so an older dashboard build keeps working. A path
-    // that is not registered here returns API Gateway's own 404, which
-    // carries no CORS headers, so the browser reports it as a network error
-    // rather than a 404 — add the route here as well as in the router.
-    api.addRoutes({
-      path: '/brands/{proxy+}',
-      methods: [apigw.HttpMethod.GET],
-      integration: new integrations.HttpLambdaIntegration('ReadBrand', reader),
-      authorizer,
-    });
-    api.addRoutes({
-      path: '/brands',
-      methods: [apigw.HttpMethod.GET],
-      integration: new integrations.HttpLambdaIntegration('ReadBrands', reader),
-      authorizer,
-    });
-    // The schedule: the calendar, the slot heatmap, and plans. Reading needs
-    // `viewer`; building or approving a plan needs `uploader`, which the
-    // planner itself checks — the route only decides who is asked.
-    const schedule = new integrations.HttpLambdaIntegration('Schedule', props.planner);
-    for (const [path, method] of [
-      ['/schedule', apigw.HttpMethod.GET],
-      ['/schedule/{brand}/slots', apigw.HttpMethod.GET],
-      ['/schedule/{brand}/plans', apigw.HttpMethod.GET],
-      ['/schedule/{brand}/plans', apigw.HttpMethod.POST],
-      ['/schedule/{brand}/plans/{planId}', apigw.HttpMethod.GET],
-      ['/schedule/{brand}/plans/{planId}/approve', apigw.HttpMethod.POST],
-    ] as const) {
-      api.addRoutes({ path, methods: [method], integration: schedule, authorizer });
+    // Every route the API carries comes from the table in `@darkrelay/core`,
+    // which the dashboard builds its paths from as well. That is the whole
+    // point of the table: a handler with no route in front of it used to
+    // reach the browser as API Gateway's own CORS-less 404, which `fetch`
+    // reports as a bare "NetworkError". Add an endpoint there, not here.
+    //
+    // Who may call what is not decided here either: every route takes the
+    // same JWT authorizer, and each router checks whether the caller's
+    // groups allow the brand and the action.
+    const owners: { owner: RouteOwner; id: string; fn: lambda.IFunction }[] = [
+      { owner: 'reader', id: 'Read', fn: reader },
+      { owner: 'uploads', id: 'Upload', fn: uploads },
+      { owner: 'planner', id: 'Schedule', fn: props.planner },
+      { owner: 'brandWrites', id: 'BrandWrite', fn: brandWrites },
+    ];
+    for (const { owner, id, fn } of owners) {
+      const integration = new integrations.HttpLambdaIntegration(id, fn);
+      for (const route of routesFor(owner)) {
+        api.addRoutes({
+          path: route.path,
+          methods: [apigw.HttpMethod[route.method]],
+          integration,
+          authorizer,
+        });
+      }
     }
 
-    const upload = new integrations.HttpLambdaIntegration('Upload', uploads);
-    for (const [path, method] of [
-      ['/me', apigw.HttpMethod.GET],
-      ['/shows/{show}/uploads', apigw.HttpMethod.POST],
-      ['/shows/{show}/uploads/{bundleId}', apigw.HttpMethod.GET],
-      ['/shows/{show}/uploads/{bundleId}/{action}', apigw.HttpMethod.POST],
-      ['/shows/{show}/catalog', apigw.HttpMethod.GET],
-      ['/shows/{show}/catalog/{episodeId}', apigw.HttpMethod.GET],
-      // A batch of Shorts belongs to a brand, not to a feed: a brand with
-      // only a channel has no show.json to upload against. These are more
-      // specific than `/brands/{proxy+}`, so they reach this Lambda and not
-      // the reader.
-      ['/brands/{brand}/shorts', apigw.HttpMethod.GET],
-      ['/brands/{brand}/shorts', apigw.HttpMethod.POST],
-      ['/brands/{brand}/shorts/{batchId}', apigw.HttpMethod.GET],
-      ['/brands/{brand}/shorts/{batchId}/{action}', apigw.HttpMethod.POST],
-    ] as const) {
-      api.addRoutes({ path, methods: [method], integration: upload, authorizer });
-    }
-
-    // Changing a brand's icon: `uploader` for that brand, checked in the
-    // router. `/shows/...` is the same route under the older name.
-    const brandWrite = new integrations.HttpLambdaIntegration('BrandWrite', brandWrites);
-    for (const path of ['/brands/{brand}/icon', '/shows/{brand}/icon']) {
-      api.addRoutes({
-        path,
-        methods: [apigw.HttpMethod.POST],
-        integration: brandWrite,
-        authorizer,
-      });
-    }
+    // A path with no route of its own still has to reach one, or the browser
+    // gets a 404 it is not allowed to read.
+    //
+    // Two things about this are load-bearing, both measured against a real
+    // HTTP API rather than reasoned about:
+    //
+    // OPTIONS is absent. API Gateway answers preflight itself, ahead of
+    // routing, but only for a request no route claims. A `$default` route
+    // claims preflight, and the reply then carries no CORS headers at all —
+    // which fails every request the dashboard makes, not just the unrouted
+    // ones. Listing the methods leaves preflight where it belongs.
+    //
+    // `/{proxy+}` and not `$default`, for the same reason. A greedy variable
+    // only conflicts with another variable at its own level, and nothing
+    // else is variable at the first segment, so this sits happily beside the
+    // reader's `/brands/{proxy+}`.
+    const notFound = nodeFunction(this, 'NotFound', { entry: 'lib/not-found.ts' });
+    api.addRoutes({
+      path: '/{proxy+}',
+      methods: [
+        apigw.HttpMethod.GET,
+        apigw.HttpMethod.POST,
+        apigw.HttpMethod.PUT,
+        apigw.HttpMethod.PATCH,
+        apigw.HttpMethod.DELETE,
+        apigw.HttpMethod.HEAD,
+      ],
+      integration: new integrations.HttpLambdaIntegration('NotFound', notFound),
+      authorizer,
+    });
 
     const runtimeConfig = {
       apiUrl: api.apiEndpoint,

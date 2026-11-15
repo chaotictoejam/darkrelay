@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import {
   canManage,
   get,
@@ -45,11 +46,12 @@ const app = document.getElementById('app')!;
 
 /** The user's roles, fetched once per page load. */
 let mePromise: Promise<MeResponse> | undefined;
-const me = (config: RuntimeConfig) => (mePromise ??= get<MeResponse>(config, '/me'));
+const me = (config: RuntimeConfig) => (mePromise ??= get<MeResponse>(config, apiPath('me')));
 
 /** The brand list, fetched once per page load: the switcher needs it everywhere. */
 let brandsPromise: Promise<ShowsResponse> | undefined;
-const brands = (config: RuntimeConfig) => (brandsPromise ??= get<ShowsResponse>(config, '/shows'));
+const brands = (config: RuntimeConfig) =>
+  (brandsPromise ??= get<ShowsResponse>(config, apiPath('brands')));
 
 /** After a brand changes, so the switcher and the brand list show it. */
 function forgetBrands() {
@@ -117,7 +119,7 @@ async function brandList(config: RuntimeConfig) {
 /** A brand page: every outlet summed, with its episodes and its videos. */
 async function brandView(config: RuntimeConfig, brand: string, days: number) {
   const [data, scheduled] = await Promise.all([
-    get<ShowResponse>(config, `/brands/${brand}?${rangeQuery(days)}`),
+    get<ShowResponse>(config, `${apiPath('brand', { brand })}?${rangeQuery(days)}`),
     pendingContent(config, brand),
   ]);
   const heading = el('div', undefined, 'heading');
@@ -239,7 +241,7 @@ async function brandView(config: RuntimeConfig, brand: string, days: number) {
 async function episodeView(config: RuntimeConfig, brand: string, id: string, days: number) {
   const data = await get<EpisodeResponse>(
     config,
-    `/brands/${brand}/episodes/${id}?${rangeQuery(days)}`,
+    `${apiPath('episode', { brand, episodeId: id })}?${rangeQuery(days)}`,
   );
   const e = data.episode;
   const back = link(`#/s/${brand}?days=${days}`, '← All episodes');

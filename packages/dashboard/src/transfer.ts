@@ -5,8 +5,8 @@ import { bytes, partRanges } from './upload-plan';
 /**
  * Sending one file's bytes straight to S3, in parts, with signed URLs the
  * API hands out a batch at a time. Episode bundles and Shorts batches both
- * upload this way: the only difference is the base path and what gets
- * written at the end.
+ * upload this way: the only difference is which route the steps are on
+ * and what gets written at the end.
  */
 
 /** Parts in flight per file. */
@@ -60,8 +60,16 @@ export interface FileJob {
   note: HTMLElement;
 }
 
+/**
+ * Where one bundle's or batch's step lives. Episode bundles and Shorts
+ * batches differ only in which route the step is on, so the caller hands
+ * over a builder rather than a path prefix: the path still comes from the
+ * route table, and this stays ignorant of which of the two it is serving.
+ */
+export type StepPath = (step: 'parts' | 'files' | 'complete') => string;
+
 /** Sends a file's remaining parts, a few at a time, then completes it. */
-export async function sendFile(config: RuntimeConfig, base: string, job: FileJob) {
+export async function sendFile(config: RuntimeConfig, step: StepPath, job: FileJob) {
   const spec = job.spec!;
   const ranges = partRanges(job.file.size, spec.partSize, spec.partCount);
   const queue = ranges.filter((r) => !job.etags.has(r.partNumber));
@@ -80,7 +88,7 @@ export async function sendFile(config: RuntimeConfig, base: string, job: FileJob
     if (cached && Date.now() - cached.at < URL_MAX_AGE_MS) return cached.url;
     // Sign this part and the next ones still waiting, in one call.
     const wanted = [n, ...queue.map((r) => r.partNumber)].slice(0, SIGN_BATCH);
-    const { urls: signed } = await post<{ urls: Record<string, string> }>(config, `${base}/parts`, {
+    const { urls: signed } = await post<{ urls: Record<string, string> }>(config, step('parts'), {
       name: spec.name,
       uploadId: spec.uploadId,
       parts: wanted,
@@ -116,7 +124,7 @@ export async function sendFile(config: RuntimeConfig, base: string, job: FileJob
   };
   progress();
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length || 1) }, worker));
-  await post(config, `${base}/files`, {
+  await post(config, step('files'), {
     name: spec.name,
     uploadId: spec.uploadId,
     parts: [...job.etags].map(([partNumber, etag]) => ({ partNumber, etag })),
@@ -130,11 +138,11 @@ export async function sendFile(config: RuntimeConfig, base: string, job: FileJob
  * Sends every file that still needs it, one after another, marking the row
  * that failed. Files already finished are skipped, so a retry resumes.
  */
-export async function sendAll(config: RuntimeConfig, base: string, jobs: FileJob[]) {
+export async function sendAll(config: RuntimeConfig, step: StepPath, jobs: FileJob[]) {
   for (const job of jobs) {
     if (job.done) continue;
     job.row.classList.remove('failed');
-    await sendFile(config, base, job).catch((e: unknown) => {
+    await sendFile(config, step, job).catch((e: unknown) => {
       job.row.classList.add('failed');
       job.note.textContent = `Failed: ${(e as Error).message}`;
       throw e;
