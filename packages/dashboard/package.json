@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "vite": "7.3.7"
+  },
+  "dependencies": {
+    "@darkrelay/core": "0.1.0"
   }
 }

@@ -8,6 +8,7 @@ import { AnalyticsStack } from '../lib/stacks/analytics-stack';
 import { DashboardStack } from '../lib/stacks/dashboard-stack';
 import { PublishStack } from '../lib/stacks/publish-stack';
 import { tagDeployment } from '../lib/tags';
+import { deployedRoutes } from '@darkrelay/core';
 
 const env = { account: '123456789012', region: 'us-east-1' };
 
@@ -53,6 +54,14 @@ function synth(input: DeploymentConfigInput) {
 }
 
 let t: ReturnType<typeof synth>;
+
+/** Every route key the dashboard's HTTP API deploys. */
+function routeKeys(): string[] {
+  return Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route')).map((r) =>
+    String(r['Properties'].RouteKey),
+  );
+}
+
 beforeAll(() => {
   t = synth({
     domain: {
@@ -395,79 +404,74 @@ describe('dashboard', () => {
       AdminCreateUserConfig: { AllowAdminCreateUserOnly: true },
       UserPoolTier: 'LITE',
     });
-    const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route'));
-    expect(routes.map((r) => r['Properties'].RouteKey).sort()).toEqual([
-      'GET /brands',
-      'GET /brands/{brand}/shorts',
-      'GET /brands/{brand}/shorts/{batchId}',
-      'GET /brands/{proxy+}',
-      'GET /me',
-      'GET /schedule',
-      'GET /schedule/{brand}/plans',
-      'GET /schedule/{brand}/plans/{planId}',
-      'GET /schedule/{brand}/slots',
-      'GET /shows',
-      'GET /shows/{proxy+}',
-      'GET /shows/{show}/catalog',
-      'GET /shows/{show}/catalog/{episodeId}',
-      'GET /shows/{show}/uploads/{bundleId}',
-      'POST /brands/{brand}/icon',
-      'POST /brands/{brand}/shorts',
-      'POST /brands/{brand}/shorts/{batchId}/{action}',
-      'POST /schedule/{brand}/plans',
-      'POST /schedule/{brand}/plans/{planId}/approve',
-      'POST /shows/{brand}/icon',
-      'POST /shows/{show}/uploads',
-      'POST /shows/{show}/uploads/{bundleId}/{action}',
-    ]);
-    for (const r of routes) expect(r['Properties'].AuthorizationType).toBe('JWT');
+    for (const r of Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route'))) {
+      expect(r['Properties'].AuthorizationType).toBe('JWT');
+    }
   });
 
   /**
-   * A path the API has no route for returns API Gateway's own 404, which
-   * carries no CORS headers, so the browser reports a network error and the
-   * page shows nothing useful. Checking the route keys against each other
-   * cannot catch that: these are the paths the dashboard actually fetches.
+   * The route table in `@darkrelay/core` is what the dashboard builds its
+   * paths from, so a deployed API that does not match it is the bug this
+   * table exists to prevent: a path with no route returns API Gateway's own
+   * 404, which carries no CORS headers, so the browser reports a network
+   * error and the page says nothing useful. Asserting equality rather than
+   * containment matters in both directions — a route nobody declared is a
+   * Lambda reachable by a path no one reviewed.
    */
-  it('has a route for every path the dashboard asks for', () => {
-    const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route')).map((r) =>
-      String(r['Properties'].RouteKey),
-    );
-    const matches = (routeKey: string, method: string, path: string) => {
-      const [m, template = ''] = routeKey.split(' ');
-      if (m !== method) return false;
-      const want = template.split('/').filter(Boolean);
-      const got = path.split('/').filter(Boolean);
-      for (const [i, segment] of want.entries()) {
-        if (segment.endsWith('+}')) return got.length > i;
-        if (got[i] === undefined) return false;
-        if (!segment.startsWith('{') && segment !== got[i]) return false;
-      }
-      return want.length === got.length;
+  it('deploys exactly the routes the shared table declares', () => {
+    // The catch-all is the stack's own, not an endpoint; the reader's
+    // wildcards are declared, and `GET /brands/{proxy+}` is not this.
+    const deployed = routeKeys().filter((k) => !k.endsWith(' /{proxy+}'));
+    const declared = deployedRoutes().map((r) => `${r.method} ${r.path}`);
+    expect(deployed.sort()).toEqual(declared.sort());
+  });
+
+  it('sends every path the dashboard asks for to the right Lambda', () => {
+    const owners: Record<string, string> = {
+      reader: 'Read',
+      uploads: 'Upload',
+      planner: 'Schedule',
+      brandWrites: 'BrandWrite',
     };
-    const asked: [string, string][] = [
-      ['GET', '/me'],
-      ['GET', '/shows'],
-      ['GET', '/brands'],
-      ['GET', '/brands/cc'],
-      ['GET', '/brands/cc/episodes/0000000000000001'],
-      ['GET', '/brands/cc/videos/dQw4w9WgXcQ'],
-      ['GET', '/brands/cc/outlets/youtube'],
-      ['GET', '/shows/cc'],
-      ['GET', '/shows/cc/catalog'],
-      ['GET', '/shows/cc/catalog/0000000000000001'],
-      ['POST', '/shows/cc/uploads'],
-      ['GET', '/shows/cc/uploads/20261112000000-abcdef'],
-      ['POST', '/shows/cc/uploads/20261112000000-abcdef/parts'],
-      ['GET', '/schedule'],
-      ['GET', '/schedule/cc/slots'],
-      ['GET', '/schedule/cc/plans'],
-      ['GET', '/schedule/cc/plans/20261112103000-7f3a21'],
-      ['POST', '/schedule/cc/plans'],
-      ['POST', '/schedule/cc/plans/20261112103000-7f3a21/approve'],
-    ];
-    const missing = asked.filter(([m, path]) => !routes.some((r) => matches(r, m, path)));
-    expect(missing).toEqual([]);
+    const routes = Object.values(t.dashboard.findResources('AWS::ApiGatewayV2::Route'));
+    for (const route of deployedRoutes()) {
+      const key = `${route.method} ${route.path}`;
+      const found = routes.find((r) => r['Properties'].RouteKey === key);
+      expect(found, `no route for ${key}`).toBeDefined();
+      // The route's target is a Ref to its integration, whose logical id
+      // carries the construct id the stack gave that Lambda's integration.
+      const ref = JSON.stringify(found!['Properties'].Target).match(/"Ref":\s*"([^"]+)"/)?.[1];
+      expect(ref, `${key} has no integration`).toBeDefined();
+      expect(ref!, `${key} should reach ${route.owner}`).toContain(owners[route.owner]!);
+    }
+  });
+
+  /**
+   * Anything the table does not name must still reach a route, or the 404
+   * comes back without CORS headers and the dashboard can only say
+   * "NetworkError".
+   *
+   * The absent OPTIONS is the part to leave alone. API Gateway answers
+   * preflight itself, but only for requests no route claims; a catch-all
+   * that claims OPTIONS gets the preflight instead, and replies without any
+   * CORS headers — which breaks every call the dashboard makes. Measured on
+   * a scratch API, with `$default` and without.
+   */
+  it('catches unrouted paths so their 404 is readable in the browser', () => {
+    const keys = routeKeys().filter((k) => k.endsWith(' /{proxy+}'));
+    expect(keys.sort()).toEqual([
+      'DELETE /{proxy+}',
+      'GET /{proxy+}',
+      'HEAD /{proxy+}',
+      'PATCH /{proxy+}',
+      'POST /{proxy+}',
+      'PUT /{proxy+}',
+    ]);
+  });
+
+  it('never routes OPTIONS, so API Gateway keeps answering preflight', () => {
+    expect(routeKeys().filter((k) => k.startsWith('OPTIONS'))).toEqual([]);
+    expect(routeKeys()).not.toContain('$default');
   });
 
   it('creates the admin group; per-show groups come from the CLI', () => {

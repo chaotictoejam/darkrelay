@@ -1,3 +1,4 @@
+import { apiPath } from '@darkrelay/core/routes';
 import { get, type OutletResponse, type ShowResponse, type VideoResponse } from './api';
 import type { RuntimeConfig } from './auth';
 import { barList, lineChart } from './charts';
@@ -48,7 +49,7 @@ export async function outletView(
   days: number,
 ) {
   const [data, scheduled] = await Promise.all([
-    get<OutletResponse>(config, `/brands/${brand}/outlets/${outletId}?${rangeQuery(days)}`),
+    get<OutletResponse>(config, `${apiPath('outlet', { brand, outletId })}?${rangeQuery(days)}`),
     pendingContent(config, brand, outletId),
   ]);
   const back = link(`#/s/${brand}?days=${days}`, `← ${data.title}`);
@@ -157,7 +158,10 @@ export async function podcastView(
   outletId: string,
   days: number,
 ) {
-  const data = await get<ShowResponse>(config, `/brands/${brand}?${rangeQuery(days)}`);
+  const data = await get<ShowResponse>(
+    config,
+    `${apiPath('brand', { brand })}?${rangeQuery(days)}`,
+  );
   const totals = (data.byOutlet ?? []).find((o) => o.id === outletId);
   const named = (data.outlets ?? []).find((o) => o.id === outletId);
   const name = totals?.name ?? named?.name ?? outletId;
@@ -212,7 +216,7 @@ export async function videoView(
 ) {
   const data = await get<VideoResponse>(
     config,
-    `/brands/${brand}/videos/${videoId}?${rangeQuery(days)}`,
+    `${apiPath('video', { brand, videoId })}?${rangeQuery(days)}`,
   );
   const v = data.video;
   const back = link(`#/s/${brand}?days=${days}`, '← Back');
