@@ -399,7 +399,7 @@ describe('outletView', () => {
       unscheduled: [],
       plans: [],
     } satisfies ScheduleResponse);
-    await outletView(app, config, 'dr', 'youtube', 90);
+    expect(await outletView(app, config, 'dr', 'youtube', 90)).toBe('Dr. Joanne Skiles');
     const shown = text(app);
     expect(shown).toContain('Videos');
     expect(shown).toContain('Shorts');
@@ -450,13 +450,15 @@ describe('podcastView', () => {
     vi.setSystemTime(NOW);
     const app = createElement('main');
     stub.get.set(`/brands/dr?${rangeQuery(90)}`, brandPage());
-    await podcastView(app, config, 'dr', 'feed', 90);
+    const title = await podcastView(app, config, 'dr', 'feed', 90);
     vi.useRealTimers();
-    return app;
+    return { app, title };
   };
 
   it('is where the podcast breakdowns live, named as the podcast', async () => {
-    const shown = text(await draw());
+    const { app, title } = await draw();
+    const shown = text(app);
+    expect(title).toBe('My Show feed');
     expect(shown).toContain('My Show feed');
     expect(shown).toContain('Podcast');
     expect(shown).toContain('Downloads, last 90 days');
@@ -466,7 +468,8 @@ describe('podcastView', () => {
   });
 
   it('counts the apps of this outlet, not of every podcast source', async () => {
-    const shown = text(await draw());
+    const { app } = await draw();
+    const shown = text(app);
     expect(shown).toContain('Overcast');
     expect(shown).not.toContain('Apple Podcasts');
   });
@@ -491,7 +494,7 @@ describe('videoView', () => {
     vi.setSystemTime(NOW);
     const app = createElement('main');
     stub.get.set(`/brands/dr/videos/v1?${rangeQuery(7)}`, response(over));
-    await videoView(app, config, 'dr', 'v1', 7);
+    expect(await videoView(app, config, 'dr', 'v1', 7)).toBe(over.title ?? 'The whole episode');
     vi.useRealTimers();
     return text(app);
   };

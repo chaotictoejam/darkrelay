@@ -8,6 +8,7 @@ import {
   formatName,
   niceTicks,
   outletKindName,
+  pageTitle,
   podcastApps,
   recordedTo,
   sourceName,
@@ -16,6 +17,14 @@ import {
 } from '../src/format';
 
 describe('format', () => {
+  it.each([
+    [undefined, 'DarkRelay'],
+    ['', 'DarkRelay'],
+    ['Schedule', 'Schedule · DarkRelay'],
+    ['Upload episode', 'Upload episode · DarkRelay'],
+    ['An episode title', 'An episode title · DarkRelay'],
+  ])('formats the page title for %s', (title, expected) => expect(pageTitle(title)).toBe(expected));
+
   it.each([
     [0, '0'],
     [999, '999'],

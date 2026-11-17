@@ -260,3 +260,8 @@ export function playsWord(kind: string): string {
   if (kind === 'rss') return 'downloads';
   return 'plays';
 }
+
+/** The browser tab title, with a plain fallback for the root route and errors. */
+export function pageTitle(title?: string): string {
+  return title ? `${title} · DarkRelay` : 'DarkRelay';
+}

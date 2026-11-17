@@ -143,6 +143,7 @@ export async function outletView(
     );
   }
   app.replaceChildren(...sections);
+  return data.outlet.name;
 }
 
 /**
@@ -204,6 +205,7 @@ export async function podcastView(
     );
   }
   app.replaceChildren(...sections);
+  return name;
 }
 
 /** One video or Short: the same series view an episode gets. */
@@ -259,4 +261,5 @@ export async function videoView(
     el('p', '', 'muted'),
   );
   app.lastElementChild!.append(watch);
+  return v.title;
 }
