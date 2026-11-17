@@ -128,6 +128,12 @@ export function buildOutlet(brandSlug: string, flags: OutletFlags, now = new Dat
   if (!kind || !OUTLET_KINDS.includes(kind)) {
     throw new Error(`--kind must be one of ${OUTLET_KINDS.join(', ')}`);
   }
+  if (flags.connection !== undefined && kind !== 'youtube')
+    throw new Error(`${kind} outlets do not accept --connection`);
+  if (flags.feed !== undefined && kind !== 'rss')
+    throw new Error(`${kind} outlets do not accept --feed`);
+  if (flags.url !== undefined && kind !== 'spotify' && kind !== 'apple')
+    throw new Error(`${kind} outlets do not accept --url`);
   const addedAt = now.toISOString();
   let raw: OutletInput;
   if (kind === 'rss') {

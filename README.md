@@ -91,6 +91,8 @@ npx darkrelay brand outlet remove my-brand spotify
 
 Copy `examples/brand.example.json` for a starting point. Outlet ids default to the kind, so a brand's first feed is `rss` and its first channel `youtube`; pass `--id` to add a second of the same kind. The icon is a square image in the media bucket, shown in the dashboard nav and on brand pages.
 
+`brand outlet add` rejects flags that do not apply to the chosen kind: `--connection` is for `youtube`, `--feed` is for `rss`, and `--url` is for `spotify` or `apple`. `--id` and `--label` work for every kind.
+
 Removing an outlet stops counting it and nothing else: the feed keeps serving and the channel keeps its videos. To stop publishing a feed, use `darkrelay show draft <slug>`.
 
 ### YouTube channels as outlets
