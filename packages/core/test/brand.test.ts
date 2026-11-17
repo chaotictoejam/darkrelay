@@ -195,3 +195,14 @@ describe('youtubeDefaults', () => {
     });
   });
 });
+
+describe('brand timezone validation', () => {
+  it.each(['America/NewYork', 'Mars/Phobos', ''])('refuses invalid timezone %s', (timezone) => {
+    expect(() => brand({ timezone })).toThrow('Invalid time zone:');
+  });
+
+  it.each(['UTC', 'America/New_York', 'Europe/London', 'Asia/Dhaka'])(
+    'accepts a timezone supported by Intl: %s',
+    (timezone) => expect(brand({ timezone }).timezone).toBe(timezone),
+  );
+});

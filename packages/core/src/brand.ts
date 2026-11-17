@@ -93,6 +93,21 @@ export type Outlet = z.infer<typeof Outlet>;
 export type OutletInput = z.input<typeof Outlet>;
 export type OutletOfKind<K extends OutletKind> = Extract<Outlet, { kind: K }>;
 
+export const TimeZone = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: value });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { error: (issue) => 'Invalid time zone: ' + issue.input },
+  );
+
 /**
  * Brand identity and its outlets, kept at `catalog/<slug>/brand.json`. The
  * feed config stays where it is: brand.json never duplicates it, so writing
@@ -112,7 +127,7 @@ export const BrandConfig = z
      * statement about an audience's evening, not about UTC. Defaults to the
      * deployment's own zone.
      */
-    timezone: z.string().min(1).optional(),
+    timezone: TimeZone.optional(),
     outlets: z.array(Outlet).default([]),
     updatedAt: z.iso.datetime().optional(),
   })

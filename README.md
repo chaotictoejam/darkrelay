@@ -240,7 +240,7 @@ Everything deploys to **us-east-1** (CloudFront certificates and log delivery mu
 | `priceClass` | `100` | CloudFront edge coverage. `100` (North America and Europe) is cheapest. |
 | `shorts.leadDays` | `3` | How many days before its slot a Short is uploaded. |
 | `shorts.dailyUploads` | `5` | Uploads per channel per day. Six is YouTube's quota ceiling. |
-| `shorts.timezone` | `America/New_York` | The clock slot scoring and planning work in. A brand may set its own in `brand.json`. |
+| `shorts.timezone` | `America/New_York` | The clock slot scoring and planning work in. A brand may set its own in `brand.json`. Invalid brand timezones and `--zone` overrides are rejected before scheduling. |
 | `shorts.perWeek` | `3` | Releases per week a plan lays out unless asked for otherwise. |
 | `tags` | none | Extra tags on every resource, e.g. `{"CostCenter": "podcast"}`. See [Cost Explorer tags](#cost-explorer-tags). |
 

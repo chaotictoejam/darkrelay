@@ -1,4 +1,4 @@
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import type { GlobalOptions } from './context';
 import { manyBrands, oneBrand } from './brands';
 import {
@@ -47,7 +47,13 @@ import {
 } from './commands/plan';
 import { validate } from './commands/validate';
 import * as youtube from './commands/youtube';
-import { OUTLET_KINDS } from '@darkrelay/core';
+import { OUTLET_KINDS, TimeZone } from '@darkrelay/core';
+
+function timeZone(value: string): string {
+  const result = TimeZone.safeParse(value);
+  if (!result.success) throw new InvalidArgumentError('Invalid time zone: ' + value);
+  return result.data;
+}
 
 const program = new Command('darkrelay')
   .description('Publish podcasts to your own DarkRelay deployment')
@@ -299,7 +305,7 @@ plan
   .option('--explore <share>', 'share of slots spent on untested times (default 0.2)')
   .option('--since <days>', 'ignore history older than this when scoring')
   .option('--lead-days <n>', 'days between the upload and the slot (default 3)')
-  .option('--zone <iana>', "override the brand's timezone")
+  .option('--zone <iana>', "override the brand's timezone", timeZone)
   .option('--replan', 'also move content that already has a slot')
   .option('--approve', 'approve it immediately instead of reviewing it first')
   .action((brand, o) => {
@@ -321,7 +327,7 @@ plan
 shorts
   .command('slots <brand>')
   .description('Which publish times have worked for a brand, as a week-long heatmap')
-  .option('--zone <iana>', "override the brand's timezone")
+  .option('--zone <iana>', "override the brand's timezone", timeZone)
   .option('--format <kind>', 'score only one format: short, long, live')
   .option('--since <days>', 'ignore history older than this')
   .action((brand, o) => showSlots(brand, o, g()));
